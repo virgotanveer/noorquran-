@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NoorQuran — قرآن سیکھیں</title>
+<meta name="description" content="Read, understand and memorize the Quran with Urdu translation — NoorQuran app for Urdu speakers">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231b4332'/><text y='.9em' font-size='70' x='15' font-family='serif'>ق</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Nastaliq+Urdu:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <div class="logo-icon">ق</div>
+    NoorQuran
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('home')">Home</button>
+    <button class="nav-tab" onclick="showPage('browse')">Surahs</button>
+    <button class="nav-tab" onclick="showPage('read')">Read</button>
+    <button class="nav-tab" onclick="showPage('memorize')">Memorize</button>
+    <button class="nav-tab" onclick="showPage('vocab')">Vocab</button>
+    <button class="nav-tab" onclick="showPage('journal')">Journal</button>
+  </div>
+  <div class="streak-badge">🔥 <span id="streak-num">1</span>d</div>
+</nav>
+
+<!-- HOME -->
+<div id="page-home" class="page active">
+  <div class="home-hero">
+    <div class="hero-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>
+    <div class="hero-sub">اللہ کے نام سے — جو بڑا مہربان، نہایت رحم والا ہے</div>
+    <div class="stat-row">
+      <div class="stat-pill"><div class="stat-num" id="h-read">0</div><div class="stat-lbl">Ayaat read</div></div>
+      <div class="stat-pill"><div class="stat-num" id="h-words">0</div><div class="stat-lbl">Words known</div></div>
+      <div class="stat-pill"><div class="stat-num" id="h-mem">0</div><div class="stat-lbl">Memorized</div></div>
+    </div>
+  </div>
+  <div class="home-scroll">
+    <div class="section-label">Today's ayah — آج کی آیت</div>
+    <div class="today-card" id="today-card">
+      <div class="today-lbl">Loading...</div>
+    </div>
+    <div class="section-label">Quick start</div>
+    <div class="card-grid">
+      <div class="feature-card" onclick="showPage('browse')"><div class="fc-icon">📋</div><div class="fc-title">All 114 Surahs</div><div class="fc-desc">Browse and pick any surah to read</div></div>
+      <div class="feature-card" onclick="openSurah(1)"><div class="fc-icon">📖</div><div class="fc-title">Al-Fatiha</div><div class="fc-desc">Best place to start — 7 ayaat</div></div>
+      <div class="feature-card" onclick="openSurah(112)"><div class="fc-icon">✨</div><div class="fc-title">Al-Ikhlas</div><div class="fc-desc">Equals 1/3 of the Quran in reward</div></div>
+      <div class="feature-card" onclick="showPage('memorize')"><div class="fc-icon">🧠</div><div class="fc-title">Hifz Practice</div><div class="fc-desc">Memorize step by step with blanks</div></div>
+    </div>
+    <div class="section-label">Recommended path — تجویز کردہ منصوبہ</div>
+    <div style="padding:0 1rem 1.5rem">
+      <div class="plan-list-wrap" id="plan-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BROWSE -->
+<div id="page-browse" class="page">
+  <div class="browse-search-wrap">
+    <input class="surah-search" id="surah-search" placeholder="Search surah by name or number — نام یا نمبر سے تلاش کریں" oninput="filterSurahs()">
+  </div>
+  <div class="surah-browser" id="surah-browser">
+    <div class="loading"><div class="spinner"></div><span>Loading all 114 surahs...</span></div>
+  </div>
+</div>
+
+<!-- READ -->
+<div id="page-read" class="page">
+  <div class="read-top">
+    <select class="ctrl-select" id="read-surah-select" onchange="openSurah(this.value)">
+      <option value="">Select a surah...</option>
+    </select>
+    <div class="mode-toggle">
+      <button class="mode-btn active" onclick="setMode('both',this)">Ar+Ur</button>
+      <button class="mode-btn" onclick="setMode('ar_en',this)">Ar+En</button>
+      <button class="mode-btn" onclick="setMode('arabic',this)">Arabic</button>
+    </div>
+    <button class="audio-btn" id="recite-btn" onclick="reciteAll()" style="margin-left:auto">🔊 Recite all</button>
+  </div>
+  <div class="ayah-list-wrap" id="ayah-list-wrap">
+    <div class="empty-state">
+      <div style="font-size:2rem;margin-bottom:.5rem">📖</div>
+      Select a surah above or from the Surahs tab to begin reading
+    </div>
+  </div>
+</div>
+
+<!-- MEMORIZE -->
+<div id="page-memorize" class="page">
+  <div class="mem-top">
+    <select class="ctrl-select" id="mem-surah-select" onchange="loadMemorizeSurah()">
+      <option value="">Select surah to memorize...</option>
+    </select>
+    <span class="mem-prog-label" id="mem-prog-label"></span>
+  </div>
+  <div class="prog-bar-wrap flat"><div class="prog-bar" id="mem-bar" style="width:0%"></div></div>
+  <div class="mem-wrap" id="mem-content">
+    <div class="empty-state">
+      <div style="font-size:2rem;margin-bottom:.5rem">🧠</div>
+      Select a surah above to begin hifz practice
+    </div>
+  </div>
+</div>
+
+<!-- VOCAB -->
+<div id="page-vocab" class="page">
+  <div class="vocab-filter-bar">
+    <div id="vocab-filters"></div>
+  </div>
+  <div class="vocab-wrap" id="vocab-list"></div>
+</div>
+
+<!-- JOURNAL -->
+<div id="page-journal" class="page">
+  <div class="journal-wrap">
+    <div class="journal-form">
+      <div class="journal-form-title">Save an ayah that moved you — آج کی آیت یاد رکھیں</div>
+      <input class="j-input" id="j-ref" placeholder="Reference e.g. Al-Fatiha 1:2">
+      <input class="j-input j-ar" id="j-arabic" placeholder="Arabic text (paste here) — عربی متن یہاں چسپاں کریں">
+      <textarea class="j-textarea" id="j-note" placeholder="Your reflection in English or Urdu — اردو یا انگریزی میں لکھیں..."></textarea>
+      <button class="btn btn-gold" onclick="saveJournal()">Save reflection ✓</button>
+    </div>
+    <div id="journal-list"></div>
+  </div>
+</div>
+
+<!-- WORD MODAL -->
+<div class="modal-overlay" id="word-modal" onclick="if(event.target.id==='word-modal')closeWordModal()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeWordModal()">✕</button>
+    <h3>Word Meaning · لفظ کا مطلب</h3>
+    <div class="modal-ar" id="modal-ar"></div>
+    <div class="modal-ur" id="modal-ur"></div>
+    <div class="modal-fact" id="modal-fact"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
