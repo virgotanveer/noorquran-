@@ -1,91 +1,113 @@
-// NoorQuran Service Worker — PWA offline support
-const CACHE_NAME = 'noorquran-v1';
-const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+// NoorQuran Service Worker v3 — GitHub Pages compatible
+// Fixes: correct scope detection, proper cache keys, PWA launch
 
-// Files to cache immediately on install (app shell)
-const SHELL_ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Nastaliq+Urdu:wght@400;600&family=Inter:wght@400;500;600&display=swap',
+const CACHE_VERSION = 'noorquran-v3';
+
+// Detect base path at SW registration time (works for any GitHub Pages repo name)
+const SW_BASE = self.location.pathname.replace(/sw\.js$/, '');
+
+const SHELL_FILES = [
+  'index.html',
+  'style.css',
+  'app.js',
+  'tajweed.js',
+  'reader.js',
+  'manifest.json',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
 ];
 
-// ─── INSTALL — cache the app shell ───────────────────────────────────────────
+// Build absolute URLs relative to SW location
+const SHELL_URLS = SHELL_FILES.map(f => SW_BASE + f);
+// Also cache the bare directory path (what Chrome requests when launching PWA)
+SHELL_URLS.push(SW_BASE);
+SHELL_URLS.push(SW_BASE + 'index.html');
+
+// ─── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      // Cache what we can; don't fail install if a resource is missing
-      return Promise.allSettled(
-        SHELL_ASSETS.map(url => cache.add(url).catch(() => null))
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_VERSION).then(cache =>
+      Promise.allSettled(SHELL_URLS.map(url =>
+        fetch(url).then(res => {
+          if (res.ok) return cache.put(url, res);
+        }).catch(() => null)
+      ))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// ─── ACTIVATE — clean up old caches ──────────────────────────────────────────
+// ─── ACTIVATE — wipe old caches ───────────────────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// ─── FETCH — serve from cache, fall back to network ──────────────────────────
+// ─── FETCH ────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  const url = new URL(req.url);
 
-  // Always go to network for Quran API calls, then cache the response
-  if (url.hostname === 'api.alquran.cloud') {
-    event.respondWith(networkFirstWithCache(event.request));
+  // Skip non-GET
+  if (req.method !== 'GET') return;
+
+  // Quran API + audio — network first, cache fallback
+  if (url.hostname === 'api.alquran.cloud' ||
+      url.hostname === 'api.qurancdn.com'  ||
+      url.hostname === 'everyayah.com'     ||
+      url.hostname === 'api.anthropic.com') {
+    event.respondWith(networkFirst(req));
     return;
   }
 
-  // For Google Fonts, use cache-first
+  // Google Fonts — cache first (they rarely change)
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(cacheFirst(event.request));
+    event.respondWith(cacheFirst(req));
     return;
   }
 
-  // For everything else (app shell), use cache-first with network fallback
-  event.respondWith(cacheFirst(event.request));
+  // App shell — cache first with network fallback
+  event.respondWith(cacheFirst(req));
 });
 
-// Cache first — great for static assets
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
+async function cacheFirst(req) {
+  const cached = await caches.match(req, { ignoreSearch: false });
   if (cached) return cached;
   try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+    const res = await fetch(req);
+    if (res && res.status === 200 && res.type !== 'opaque') {
+      const cache = await caches.open(CACHE_VERSION);
+      cache.put(req, res.clone());
     }
-    return response;
+    return res;
   } catch {
-    return new Response('<div style="padding:2rem;text-align:center;font-family:sans-serif">You are offline. Previously loaded surahs are still available.</div>', {
-      headers: { 'Content-Type': 'text/html' }
+    // For navigation requests, serve index.html from cache
+    if (req.mode === 'navigate') {
+      const fallback = await caches.match(SW_BASE + 'index.html');
+      if (fallback) return fallback;
+    }
+    return new Response('Offline — please check your connection.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' }
     });
   }
 }
 
-// Network first — great for API data (fresh when online, cached when offline)
-async function networkFirstWithCache(request) {
-  const cache = await caches.open(CACHE_NAME);
+async function networkFirst(req) {
   try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      cache.put(request, response.clone());
+    const res = await fetch(req);
+    if (res && res.status === 200) {
+      const cache = await caches.open(CACHE_VERSION);
+      cache.put(req, res.clone());
     }
-    return response;
+    return res;
   } catch {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ error: 'offline', data: null }), {
+    const cached = await caches.match(req);
+    return cached || new Response(JSON.stringify({ error: 'offline' }), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
