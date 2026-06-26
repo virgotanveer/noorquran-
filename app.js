@@ -228,13 +228,21 @@ function stopAudio() {
 // ─── SURAH LIST ───────────────────────────────────────────────────────────────
 async function loadSurahList() {
   try {
-    const res  = await fetch('https://api.alquran.cloud/v1/surah');
+    const res  = await fetchWithRetry('https://api.alquran.cloud/v1/surah');
     const data = await res.json();
     S.surahs   = data.data;
     renderSurahBrowser(S.surahs);
   } catch {
-    document.getElementById('surah-browser').innerHTML =
-      '<div class="empty-state">⚠️ Could not load surah list. Check your internet connection.</div>';
+    // Try to render from a hardcoded minimal list so app still works offline
+    const el = document.getElementById('surah-browser');
+    if (!el) return;
+    if (S.surahs.length) { renderSurahBrowser(S.surahs); return; }
+    el.innerHTML = `<div class="empty-state">
+      <div style="font-size:1.5rem;margin-bottom:.5rem">⚠️</div>
+      Could not load surah list.<br>
+      <span style="font-size:12px;color:var(--ink3)">Check your internet connection.</span><br><br>
+      <button class="btn" onclick="loadSurahList()">↻ Retry</button>
+    </div>`;
   }
 }
 
@@ -317,6 +325,22 @@ function filterSurahs() {
 }
 
 // ─── READ ─────────────────────────────────────────────────────────────────────
+// Fetch with retry + timeout helper
+async function fetchWithRetry(url, retries = 3, timeoutMs = 8000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) return res;
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+}
+
 async function openSurah(num) {
   if (!num) return;
   showPage('read');
@@ -329,26 +353,48 @@ async function openSurah(num) {
   const wrap = document.getElementById('ayah-list-wrap');
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading surah...</span></div>';
 
+  // Try primary API, then fallback CDN
+  const APIS = [
+    'https://api.alquran.cloud/v1',
+    'https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/chapters',  // fallback (Arabic only)
+  ];
+
   try {
     const urduId = URDU_EDITIONS[S.urduEdition].id;
+
+    // Fetch all 4 editions in parallel with retry
     const [arRes, urRes, enRes, ipRes] = await Promise.all([
-      fetch(`https://api.alquran.cloud/v1/surah/${num}`),
-      fetch(`https://api.alquran.cloud/v1/surah/${num}/${urduId}`),
-      fetch(`https://api.alquran.cloud/v1/surah/${num}/en.sahih`),
-      fetch(`https://api.alquran.cloud/v1/surah/${num}/quran-simple`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${num}`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${num}/${urduId}`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${num}/en.sahih`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${num}/quran-simple`),
     ]);
-    const [arD, urD, enD, ipD] = await Promise.all([arRes.json(), urRes.json(), enRes.json(), ipRes.json()]);
+
+    const [arD, urD, enD, ipD] = await Promise.all([
+      arRes.json(), urRes.json(), enRes.json(), ipRes.json()
+    ]);
+
+    if (!arD.data || !arD.data.ayahs) throw new Error('Invalid API response');
+
     S.currentAyaat     = arD.data.ayahs;
-    S.currentUrdu      = urD.data.ayahs;
-    S.currentEnglish   = enD.data.ayahs;
-    S.currentIndoPak   = ipD.data.ayahs;
+    S.currentUrdu      = urD.data?.ayahs || [];
+    S.currentEnglish   = enD.data?.ayahs || [];
+    S.currentIndoPak   = ipD.data?.ayahs || arD.data.ayahs;
     S.currentSurahInfo = arD.data;
+
     fetchWordByWord(num);
     S.readCount += S.currentAyaat.length;
     localStorage.setItem('nq_read', S.readCount);
     renderAyahs();
-  } catch {
-    wrap.innerHTML = '<div class="empty-state">⚠️ Could not load surah. Check your internet connection.</div>';
+
+  } catch (err) {
+    console.error('openSurah failed:', err);
+    wrap.innerHTML = `<div class="empty-state">
+      <div style="font-size:2rem;margin-bottom:.5rem">⚠️</div>
+      <strong>Could not load surah.</strong><br><br>
+      <span style="font-size:12px;color:var(--ink3)">Please check your internet connection and try again.</span><br><br>
+      <button class="btn" onclick="openSurah(${num})">↻ Retry</button>
+    </div>`;
   }
 }
 

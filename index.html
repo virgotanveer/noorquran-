@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NoorQuran — قرآن سیکھیں</title>
 <meta name="description" content="Read, understand and memorize the Quran with Urdu translation">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/noorquran-/manifest.json">
 <meta name="theme-color" content="#1b4332">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NoorQuran">
-<link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/icon-512.png">
+<link rel="icon" href="/noorquran-/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/noorquran-/icons/icon-512.png">
 <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Nastaliq+Urdu:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -218,16 +218,12 @@
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // Use relative path — works for any GitHub Pages repo name
-    const swUrl = new URL('sw.js', window.location.href).href;
-    navigator.serviceWorker.register(swUrl, {
-      // Scope is the directory containing sw.js
-      scope: new URL('./', window.location.href).href
+    navigator.serviceWorker.register('/noorquran-/sw.js', {
+      scope: '/noorquran-/'
     }).then(reg => {
-      console.log('NoorQuran SW registered, scope:', reg.scope);
-      // Check for updates on each load
+      console.log('NoorQuran SW registered:', reg.scope);
       reg.update();
-    }).catch(err => console.warn('SW registration failed:', err));
+    }).catch(err => console.warn('SW failed:', err));
   });
 }
 let deferredPrompt=null;

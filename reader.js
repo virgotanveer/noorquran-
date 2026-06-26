@@ -34,10 +34,10 @@ async function openReader(surahNum, startIdx = 0) {
   try {
     const urduId = URDU_EDITIONS[S.urduEdition].id;
     const [arRes, urRes, enRes, ipRes] = await Promise.all([
-      fetch(`https://api.alquran.cloud/v1/surah/${surahNum}`),
-      fetch(`https://api.alquran.cloud/v1/surah/${surahNum}/${urduId}`),
-      fetch(`https://api.alquran.cloud/v1/surah/${surahNum}/en.sahih`),
-      fetch(`https://api.alquran.cloud/v1/surah/${surahNum}/quran-simple`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/${urduId}`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/en.sahih`),
+      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/quran-simple`),
     ]);
     const [arD, urD, enD, ipD] = await Promise.all([arRes.json(), urRes.json(), enRes.json(), ipRes.json()]);
     READER.ayahs     = arD.data.ayahs;

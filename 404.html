@@ -2,12 +2,10 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<title>NoorQuran</title>
 <script>
-  // GitHub Pages PWA fix: redirect any 404 back to index.html
-  // preserving the path so the app can handle routing
-  const path = window.location.pathname;
-  const repo = path.split('/')[1]; // e.g. "noorquran"
-  window.location.replace('/' + repo + '/index.html');
+  // GitHub Pages PWA fix — redirect any unknown route to index.html
+  window.location.replace('/noorquran-/index.html');
 </script>
 </head>
 <body></body>
