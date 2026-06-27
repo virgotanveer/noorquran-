@@ -1,6 +1,6 @@
 // NoorQuran Service Worker v5
 // Self-hosted Quran data — works with VPN
-const CACHE_NAME = 'noorquran-v5';
+const CACHE_NAME = 'noorquran-v6';
 const BASE = '/noorquran-/';
 
 const SHELL = [
