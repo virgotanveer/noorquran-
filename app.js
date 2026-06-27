@@ -366,22 +366,21 @@ async function openSurah(num) {
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading surah...</span></div>';
 
   try {
-    // Arabic & English from self-hosted repo files (VPN-proof, always works)
-    const [arRes, enRes] = await Promise.all([
-      fetchWithRetry(DATA_BASE + `ar/${num}.json`),
-      fetchWithRetry(DATA_BASE + `en/${num}.json`),
-    ]);
-    const [arD, enD] = await Promise.all([arRes.json(), enRes.json()]);
+    // Load from bundled JSON files — no external API, works with VPN
+    await loadQuranData();
+    const key = String(num);
+    const arD = QURAN_AR[key];
+    const enD = QURAN_EN[key];
+    const urD = QURAN_UR[key];
+    if (!arD) throw new Error('Surah ' + num + ' not found in bundled data');
 
     const surahInfo = S.surahs.find(s => s.number === parseInt(num)) || {};
 
-    // Build ayah objects matching old format
     S.currentAyaat = arD.ayahs.map((text, i) => ({
-      text,
-      numberInSurah: i + 1,
-      number: num * 1000 + i + 1,
+      text, numberInSurah: i + 1, number: num * 1000 + i + 1,
     }));
-    S.currentEnglish = enD.ayahs.map((text, i) => ({ text, numberInSurah: i+1 }));
+    S.currentEnglish = (enD || []).map((text, i) => ({ text, numberInSurah: i+1 }));
+    S.currentUrdu    = (urD || enD || []).map((text, i) => ({ text, numberInSurah: i+1 }));
     S.currentSurahInfo = {
       number: parseInt(num),
       name: surahInfo.name || arD.name || '',
@@ -390,21 +389,7 @@ async function openSurah(num) {
       numberOfAyahs: S.currentAyaat.length,
       revelationType: surahInfo.revelationType || '',
     };
-
-    // Urdu: try alquran.cloud, fallback to English silently
-    S.currentUrdu = [];
-    try {
-      const urduId = URDU_EDITIONS[S.urduEdition].id;
-      const urRes  = await fetchWithRetry(`https://api.alquran.cloud/v1/surah/${num}/${urduId}`, 2, 6000);
-      const urD    = await urRes.json();
-      S.currentUrdu = urD.data.ayahs.map(a => ({ text: a.text }));
-    } catch {
-      // VPN or network blocking — show English as fallback
-      S.currentUrdu = S.currentEnglish.map(a => ({ text: a.text }));
-      showToast('⚠️ Urdu unavailable — showing English. Disable VPN for Urdu.');
-    }
-
-    S.currentIndoPak = S.currentAyaat; // same for now
+    S.currentIndoPak = S.currentAyaat;
     fetchWordByWord(num);
     S.readCount += S.currentAyaat.length;
     localStorage.setItem('nq_read', S.readCount);
