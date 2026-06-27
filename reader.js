@@ -33,18 +33,27 @@ async function openReader(surahNum, startIdx = 0) {
 
   try {
     const urduId = URDU_EDITIONS[S.urduEdition].id;
-    const [arRes, urRes, enRes, ipRes] = await Promise.all([
-      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}`),
-      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/${urduId}`),
-      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/en.sahih`),
-      fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/quran-simple`),
-    ]);
-    const [arD, urD, enD, ipD] = await Promise.all([arRes.json(), urRes.json(), enRes.json(), ipRes.json()]);
-    READER.ayahs     = arD.data.ayahs;
-    READER.urdu      = urD.data.ayahs;
-    READER.english   = enD.data.ayahs;
-    READER.indopak   = ipD.data.ayahs;
-    READER.surahInfo = arD.data;
+    // Use bundled data — VPN-proof, instant load
+    await loadQuranData();
+    const key = String(surahNum);
+    const arD = QURAN_AR[key];
+    const enD = QURAN_EN[key];
+    const urD = QURAN_UR[key];
+    if (!arD) throw new Error('Surah not found');
+
+    const surahMeta = S.surahs.find(s => s.number === parseInt(surahNum)) || {};
+    READER.ayahs   = arD.ayahs.map((text,i) => ({ text, numberInSurah: i+1 }));
+    READER.english = (enD||[]).map((text,i) => ({ text, numberInSurah: i+1 }));
+    READER.urdu    = (urD||enD||[]).map((text,i) => ({ text, numberInSurah: i+1 }));
+    READER.surahInfo = {
+      number: parseInt(surahNum),
+      name: surahMeta.name || arD.name || '',
+      englishName: surahMeta.englishName || '',
+      englishNameTranslation: surahMeta.englishNameTranslation || '',
+      numberOfAyahs: READER.ayahs.length,
+      revelationType: surahMeta.revelationType || '',
+    };
+    READER.indopak = READER.ayahs;
     renderReader();
     setupReaderSwipe();
     startChallenge();
