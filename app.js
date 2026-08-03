@@ -1,772 +1,872 @@
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
-const REPO_BASE   = '/noorquran-/';
-const AUDIO_BASE  = 'https://raw.githubusercontent.com/semarketir/quranjson/master/source/audio/';
+// ══ CONFIG ════════════════════════════════════════════════════════════════════
+const REPO   = '/noorquran-/';
+const AUDIO  = 'https://raw.githubusercontent.com/semarketir/quranjson/master/source/audio/';
+const LEVELS = [0,500,1200,2500,4500,7500,12000,20000,30000,50000];
+const LEVEL_NAMES = ['Beginner','Student','Seeker','Reader','Devotee','Scholar','Hafiz','Imam','Sheikh','Mufti'];
 
-// All Quran data bundled as 3 single files in the repo — VPN-proof
-let QURAN_AR = null; // { "1": {name, count, ayahs:[]}, ... }
-let QURAN_EN = null; // { "1": [...], ... }
-let QURAN_UR = null; // { "1": [...], ... }
-
-async function loadQuranData() {
-  if (QURAN_AR) return; // already loaded
-  const [arRes, enRes, urRes] = await Promise.all([
-    fetchWithRetry(REPO_BASE + 'quran-ar.json'),
-    fetchWithRetry(REPO_BASE + 'quran-en.json'),
-    fetchWithRetry(REPO_BASE + 'quran-ur.json'),
-  ]);
-  [QURAN_AR, QURAN_EN, QURAN_UR] = await Promise.all([arRes.json(), enRes.json(), urRes.json()]);
-  console.log('Quran data loaded:', Object.keys(QURAN_AR).length, 'surahs');
-}
-
-const RECITERS = {
-  alafasy:  { name:'Sheikh Mishary Al-Afasy',       folder:'Alafasy_128kbps' },
-  sudais:   { name:'Sheikh Abdul Rahman Al-Sudais', folder:'Abdurrahmaan_As-Sudais_192kbps' },
-  husary:   { name:'Sheikh Mahmoud Al-Husary',      folder:'Husary_128kbps' },
-  minshawi: { name:'Sheikh Mohamed Al-Minshawi',    folder:'Minshawy_Murattal_128kbps' },
-};
-
-const URDU_EDITIONS = {
-  jalandhry: { name:'Fateh Muhammad Jalandhry (جالندھری)', id:'ur.jalandhry' },
-  junagarhi: { name:'Muhammad Junagarhi (جوناگڑھی)',        id:'ur.junagarhi' },
-  ahmedali:  { name:'Ahmed Ali (احمد علی)',                  id:'ur.ahmedali'  },
-};
-
-// ─── STATIC DATA ──────────────────────────────────────────────────────────────
-const TODAY_AYAHS = [
-  { ar:'لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا', ur:'اللہ کسی جان کو اس کی طاقت سے زیادہ تکلیف نہیں دیتا', ref:'Al-Baqarah 2:286', s:2,  a:286 },
-  { ar:'وَمَن يَتَّقِ اللَّهَ يَجْعَل لَّهُ مَخْرَجًا',  ur:'جو اللہ سے ڈرے اللہ اس کے لیے راہ نکالتا ہے',        ref:'At-Talaq 65:2',   s:65, a:2   },
-  { ar:'إِنَّ مَعَ الْعُسْرِ يُسْرًا',                    ur:'بے شک تکلیف کے ساتھ آسانی ہے',                        ref:'Ash-Sharh 94:6',  s:94, a:6   },
-  { ar:'وَإِذَا سَأَلَكَ عِبَادِي عَنِّي فَإِنِّي قَرِيبٌ', ur:'جب میرے بندے تم سے میرے بارے میں پوچھیں تو میں قریب ہوں', ref:'Al-Baqarah 2:186', s:2, a:186 },
-  { ar:'حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ',           ur:'ہمارے لیے اللہ کافی ہے اور وہ بہترین کارساز ہے',      ref:'Al-Imran 3:173',  s:3,  a:173 },
-  { ar:'إِنَّ اللَّهَ مَعَ الصَّابِرِينَ',                ur:'بے شک اللہ صبر کرنے والوں کے ساتھ ہے',                ref:'Al-Baqarah 2:153', s:2, a:153 },
-  { ar:'اللَّهُ نُورُ السَّمَاوَاتِ وَالْأَرْضِ',         ur:'اللہ آسمانوں اور زمین کا نور ہے',                      ref:'An-Nur 24:35',    s:24, a:35  },
-  { ar:'وَنَحْنُ أَقْرَبُ إِلَيْهِ مِنْ حَبْلِ الْوَرِيدِ', ur:'اور ہم اس کی شہ رگ سے بھی زیادہ قریب ہیں',         ref:'Qaf 50:16',       s:50, a:16  },
-  { ar:'فَبِأَيِّ آلَاءِ رَبِّكُمَا تُكَذِّبَانِ',       ur:'تم اپنے رب کی کن کن نعمتوں کو جھٹلاؤ گے',            ref:'Ar-Rahman 55:13', s:55, a:13  },
-  { ar:'وَلَذِكْرُ اللَّهِ أَكْبَرُ',                    ur:'اللہ کا ذکر سب سے بڑا ہے',                             ref:'Al-Ankabut 29:45', s:29, a:45 },
-];
-
-const VOCAB_DATA = [
-  { a:'اللَّهُ',   u:'اللہ',              count:2699, cat:'core',        fact:'The proper name of God — appears 2699 times' },
-  { a:'رَبِّ',    u:'رب / پالنہار',      count:972,  cat:'core',        fact:'Rabb — Lord, Sustainer, Nurturer' },
-  { a:'رَحْمَن',  u:'بڑا مہربان',        count:57,   cat:'attributes',  fact:'Rahman — unconditional mercy for all creation' },
-  { a:'رَحِيم',   u:'نہایت رحم والا',    count:115,  cat:'attributes',  fact:'Raheem — special ongoing mercy for believers' },
-  { a:'يَوْم',    u:'دن',                count:405,  cat:'time',        fact:'Often refers to Yaum al-Qiyamah' },
-  { a:'عَالَم',   u:'جہان',              count:75,   cat:'core',        fact:"Al-'Aalameen — all worlds and all creation" },
-  { a:'قُلْ',     u:'کہو',               count:332,  cat:'commands',    fact:'Allah directly commands the Prophet ﷺ' },
-  { a:'نَاس',     u:'لوگ / انسان',       count:241,  cat:'core',        fact:'An-Nas — the last surah is named after this' },
-  { a:'حَمْد',    u:'تعریف / شکر',       count:38,   cat:'worship',     fact:'Al-Hamd means perfect, complete praise' },
-  { a:'صِرَاط',   u:'راستہ',             count:45,   cat:'guidance',    fact:'We ask for the straight path 17 times daily' },
-  { a:'عِلْم',    u:'علم / جاننا',       count:854,  cat:'core',        fact:'Knowledge is the most emphasized concept' },
-  { a:'صَبْر',    u:'صبر',               count:90,   cat:'character',   fact:'Patience mentioned with reward 90+ times' },
-  { a:'شُكْر',    u:'شکر / احسان',       count:75,   cat:'worship',     fact:'Gratitude is tied to increase in blessings' },
-  { a:'نِعْمَة',  u:'نعمت / رحمت',       count:136,  cat:'blessings',   fact:"Allah's blessings cannot be counted (14:34)" },
-  { a:'جَنَّة',   u:'جنت',               count:147,  cat:'afterlife',   fact:'The most mentioned reward in the Quran' },
-  { a:'نَار',     u:'آگ / جہنم',         count:126,  cat:'afterlife',   fact:'Mentioned as a warning more than 100 times' },
-  { a:'إِيمَان',  u:'ایمان',             count:45,   cat:'faith',       fact:'Belief in the heart — root of all worship' },
-  { a:'تَقْوَى',  u:'تقوی / پرہیزگاری', count:87,   cat:'character',   fact:'God-consciousness — the highest virtue' },
-  { a:'دُعَاء',   u:'دعا',               count:65,   cat:'worship',     fact:'Supplication — Allah says Call on Me and I answer' },
-  { a:'صَلَاة',   u:'نماز',              count:99,   cat:'worship',     fact:'Prayer — the pillar of Islam, mentioned 99 times' },
-  { a:'زَكَاة',   u:'زکوٰۃ',             count:32,   cat:'worship',     fact:'Charity — often paired with salah in commands' },
-  { a:'كِتَاب',   u:'کتاب',              count:261,  cat:'core',        fact:'The Book — refers to divine revelation' },
-  { a:'آيَة',     u:'آیت / نشانی',       count:382,  cat:'core',        fact:'Ayah = a Quranic verse and a sign from Allah' },
-  { a:'حَقّ',     u:'حق / سچ',           count:247,  cat:'core',        fact:"Truth — Allah is Al-Haqq (The Truth)" },
-  { a:'نَفْس',    u:'نفس / جان',         count:295,  cat:'core',        fact:'Soul, self — Quran warns against its desires' },
-  { a:'قَلْب',    u:'دل',                count:132,  cat:'core',        fact:'Heart — the spiritual center of a person' },
-  { a:'رَسُول',   u:'رسول / پیغمبر',     count:236,  cat:'prophethood', fact:'Messenger — Muhammad ﷺ is the final Rasool' },
-  { a:'مَلَك',    u:'فرشتہ',             count:88,   cat:'unseen',      fact:"Angels carry out Allah's commands" },
-  { a:'جِنّ',     u:'جن',                count:22,   cat:'unseen',      fact:'Unseen beings created from smokeless fire' },
-  { a:'ذِكْر',    u:'ذکر / یاد',         count:256,  cat:'worship',     fact:'Remembrance of Allah — hearts find peace in it' },
-];
-
-const PLAN_STEPS = [
-  { done:true,  text:'Learn Al-Fatiha with full Urdu meaning', sub:'7 ayaat — said 17 times daily in salah', num:1   },
-  { done:true,  text:'Understand Al-Ikhlas (Tawheed)',         sub:'4 ayaat — equals 1/3 of Quran in reward', num:112 },
-  { done:false, text:'Read Al-Falaq & An-Nas',                 sub:'The two protection surahs', num:113 },
-  { done:false, text:'Complete Juz Amma (last 37 surahs)',     sub:'Short surahs you recite in prayers', num:78  },
-  { done:false, text:'Start Al-Mulk (Surah 67)',               sub:'30 ayaat — intercedes on Qiyamah', num:67  },
-  { done:false, text:'Read Surah Yasin (Surah 36)',            sub:'Called the heart of the Quran', num:36  },
-];
-
-// ─── STATE ────────────────────────────────────────────────────────────────────
-const S = {
-  surahs: [],
-  currentSurahNum: null,
-  currentAyaat: [],
-  currentUrdu: [],
-  currentEnglish: [],
-  currentSurahInfo: null,
-  currentWordByWord: [],
-  expandedAyah: null,
-  mode: 'both',
-  tajweedOn: JSON.parse(localStorage.getItem('nq_tajweed') || 'false'),
-  reciter: localStorage.getItem('nq_reciter') || 'alafasy',
-  urduEdition: localStorage.getItem('nq_urdu') || 'jalandhry',
-  currentAudio: null,
-  playingAyah: null,
-  bookmarks: JSON.parse(localStorage.getItem('nq_bookmarks') || '{}'),
-  badges: JSON.parse(localStorage.getItem('nq_badges') || '{}'),
-  journal: JSON.parse(localStorage.getItem('nq_journal') || '[]'),
-  userWords: JSON.parse(localStorage.getItem('nq_words') || '{}'),
-  vocabFilter: 'all',
-  streak: 0,
-  memState: { num:null, ayaat:[], urdu:[], idx:0, score:0, revealed:false },
-  searchResults: [],
-  readCount: parseInt(localStorage.getItem('nq_read') || '0'),
-  memCount:  parseInt(localStorage.getItem('nq_memc') || '0'),
-};
-
-// ─── FETCH HELPER — retry with timeout ───────────────────────────────────────
-async function fetchWithRetry(url, retries = 3, timeoutMs = 10000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const ctrl  = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res   = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (res.ok) return res;
-      throw new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise(r => setTimeout(r, 700 * (i + 1)));
-    }
-  }
-}
-
-// ─── AUDIO — GitHub raw (VPN-proof) + everyayah fallback ─────────────────────
-function ayahAudioUrl(surahNum, ayahNum) {
-  // Primary: semarketir GitHub raw (works with VPN)
-  const s = String(surahNum).padStart(3, '0');
-  const a = String(ayahNum).padStart(3, '0');
-  return `${AUDIO_BASE}${s}/${a}.mp3`;
-}
-
-function ayahAudioUrlFallback(surahNum, ayahNum) {
-  // Fallback: everyayah.com (works without VPN)
-  const folder = RECITERS[S.reciter].folder;
-  const s = String(surahNum).padStart(3, '0');
-  const a = String(ayahNum).padStart(3, '0');
-  return `https://everyayah.com/data/${folder}/${s}${a}.mp3`;
-}
-
-function playAyah(surahNum, ayahNum, btn) {
-  if (S.currentAudio) {
-    S.currentAudio.pause();
-    S.currentAudio = null;
-    document.querySelectorAll('.play-btn').forEach(b => { b.textContent='▶ Play'; b.classList.remove('playing'); });
-    if (S.playingAyah === `${surahNum}:${ayahNum}`) { S.playingAyah = null; return; }
-  }
-  S.playingAyah = `${surahNum}:${ayahNum}`;
-  const audio   = new Audio(ayahAudioUrl(surahNum, ayahNum));
-  S.currentAudio = audio;
-  if (btn) { btn.textContent = '⏸ Playing…'; btn.classList.add('playing'); }
-
-  audio.onerror = () => {
-    // Try fallback URL
-    const fallback = new Audio(ayahAudioUrlFallback(surahNum, ayahNum));
-    S.currentAudio = fallback;
-    fallback.play().catch(() => { if (btn) { btn.textContent='▶ Play'; btn.classList.remove('playing'); } });
-    fallback.onended = () => { S.currentAudio=null; S.playingAyah=null; if(btn){btn.textContent='▶ Play';btn.classList.remove('playing');} };
-  };
-
-  audio.play().catch(() => { if (btn) { btn.textContent='▶ Play'; btn.classList.remove('playing'); } });
-  audio.onended = () => { S.currentAudio=null; S.playingAyah=null; if(btn){btn.textContent='▶ Play';btn.classList.remove('playing');} };
-}
-
-function playSurah(surahNum, ayahs) {
-  stopAudio();
-  let idx = 0;
-  function next() {
-    if (idx >= ayahs.length) return;
-    const a = ayahs[idx++];
-    const audio = new Audio(ayahAudioUrl(surahNum, a.numberInSurah));
-    S.currentAudio = audio;
-    audio.onerror = () => {
-      const fb = new Audio(ayahAudioUrlFallback(surahNum, a.numberInSurah));
-      S.currentAudio = fb; fb.play().catch(()=>{}); fb.onended = next;
-    };
-    audio.play().catch(()=>{});
-    audio.onended = next;
-  }
-  next();
-}
-
-function stopAudio() {
-  if (S.currentAudio) { S.currentAudio.pause(); S.currentAudio = null; }
-  S.playingAyah = null;
-  document.querySelectorAll('.play-btn').forEach(b => { b.textContent='▶ Play'; b.classList.remove('playing'); });
-}
-
-// ─── STREAK ───────────────────────────────────────────────────────────────────
-function initStreak() {
-  const today     = new Date().toDateString();
-  const lastVisit = localStorage.getItem('nq_last_visit');
-  let streak      = parseInt(localStorage.getItem('nq_streak') || '0');
-  if      (lastVisit === today)  { /* same day */ }
-  else if (lastVisit === new Date(Date.now()-86400000).toDateString()) { streak++; localStorage.setItem('nq_streak', streak); }
-  else    { streak = 1; localStorage.setItem('nq_streak', streak); }
-  localStorage.setItem('nq_last_visit', today);
-  S.streak = streak;
-  document.getElementById('streak-num').textContent = streak;
-}
-
-// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
-async function requestNotificationPermission() {
-  if (!('Notification' in window)) { showToast('Notifications not supported'); return; }
-  const perm = await Notification.requestPermission();
-  if (perm === 'granted') { localStorage.setItem('nq_notif','1'); scheduleFajrReminder(); showToast('✅ Fajr reminder enabled!'); }
-  else { showToast('⚠️ Permission denied'); }
-  renderNotifBtn();
-}
-
-function scheduleFajrReminder() {
-  if (Notification.permission !== 'granted') return;
-  const h = parseInt(localStorage.getItem('nq_fajr_hour')||'5');
-  const m = parseInt(localStorage.getItem('nq_fajr_min') ||'0');
-  const now  = new Date();
-  const next = new Date(); next.setHours(h,m,0,0);
-  if (next <= now) next.setDate(next.getDate()+1);
-  clearTimeout(window._fajrTimer);
-  window._fajrTimer = setTimeout(() => {
-    new Notification('NoorQuran — وقتِ فجر 🌅', { body:'اللہ کے نام سے شروع کریں — آج کی آیت پڑھیں', icon: REPO_BASE+'icons/icon-192.png', tag:'fajr' });
-    scheduleFajrReminder();
-  }, next - now);
-}
-
-function renderNotifBtn() {
-  const btn = document.getElementById('notif-btn');
-  if (!btn) return;
-  const on = Notification.permission === 'granted';
-  btn.textContent = on ? '🔔 Reminder ON' : '🔕 Enable Fajr Reminder';
-  btn.classList.toggle('active', on);
-}
-
-// ─── SURAH LIST — self-hosted meta ────────────────────────────────────────────
-async function loadSurahList() {
+// ══ QURAN DATA ════════════════════════════════════════════════════════════════
+let QAR=null, QEN=null, QUR=null;
+async function loadQ(){
+  if(QAR) return;
   try {
-    await loadQuranData();
-    const data = Object.entries(QURAN_AR).map(([k,s]) => ({ number: parseInt(k), name: s.name, count: s.count }));
-    // Enrich with additional info
-    const revelationTypes = ['Meccan','Meccan','Medinan','Medinan','Medinan','Meccan','Meccan','Medinan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Medinan','Medinan','Meccan','Meccan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Medinan','Medinan','Meccan','Medinan','Meccan','Meccan','Meccan','Medinan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Medinan','Medinan','Medinan','Meccan','Meccan','Meccan','Meccan','Medinan','Meccan','Medinan','Medinan','Medinan','Medinan','Meccan','Meccan','Meccan','Meccan','Medinan','Meccan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Medinan','Meccan','Medinan','Meccan','Meccan','Meccan','Meccan','Medinan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan','Meccan'];
-    S.surahs = data.map((s,i) => ({
-      number: s.number,
-      name: arabicSurahNames[s.number] || s.name,
-      englishName: englishSurahNames[s.number] || s.name,
-      englishNameTranslation: surahMeanings[s.number] || '',
-      numberOfAyahs: s.count,
-      revelationType: revelationTypes[i] || 'Meccan',
-    }));
-    renderSurahBrowser(S.surahs);
-    populateSelects();
-  } catch(e) {
-    console.error('loadSurahList failed:', e);
-    document.getElementById('surah-browser').innerHTML =
-      `<div class="empty-state"><div style="font-size:1.5rem;margin-bottom:.5rem">⚠️</div>Could not load surah list.<br><button class="btn" style="margin-top:.8rem" onclick="loadSurahList()">↻ Retry</button></div>`;
+    const [a,e,u] = await Promise.all([
+      fetch(REPO+'quran-ar.json').then(r=>r.json()),
+      fetch(REPO+'quran-en.json').then(r=>r.json()),
+      fetch(REPO+'quran-ur.json').then(r=>r.json()),
+    ]);
+    QAR=a; QEN=e; QUR=u;
+    console.log('Quran data loaded:',Object.keys(QAR).length,'surahs');
+  } catch(e){ console.error('loadQ failed:',e); throw e; }
+}
+
+// ══ STATE ═════════════════════════════════════════════════════════════════════
+const S = {
+  xp:        parseInt(localStorage.getItem('nq_xp')||'0'),
+  totalXp:   parseInt(localStorage.getItem('nq_total_xp')||'0'),
+  streak:    0,
+  ayaatRead: parseInt(localStorage.getItem('nq_ayaat')||'0'),
+  challenges:parseInt(localStorage.getItem('nq_chal')||'0'),
+  bookmarks: JSON.parse(localStorage.getItem('nq_bm')||'{}'),
+  journal:   JSON.parse(localStorage.getItem('nq_jrn')||'[]'),
+  lastSurah: parseInt(localStorage.getItem('nq_last_surah')||'1'),
+  lastAyah:  parseInt(localStorage.getItem('nq_last_ayah')||'0'),
+  words:     JSON.parse(localStorage.getItem('nq_words')||'{}'),
+  done:      JSON.parse(localStorage.getItem('nq_done')||'{}'),  // completed challenges today
+  tajweed:   JSON.parse(localStorage.getItem('nq_tajweed')||'false'),
+  reciter:   localStorage.getItem('nq_reciter')||'Alafasy_128kbps',
+  transPref: localStorage.getItem('nq_trans')||'ur',
+  readMode:  'both',
+  surahs:    [],
+  // Reader state
+  rd: { surahNum:1, ayahs:[], urdu:[], english:[], idx:0, audio:null, timer:null, elapsed:0, target:300, active:false, challengeKey:null },
+};
+
+// ══ SURAH META ════════════════════════════════════════════════════════════════
+const EN_NAMES={1:'Al-Fatihah',2:'Al-Baqarah',3:'Aal-i-Imraan',4:'An-Nisa',5:'Al-Maidah',6:'Al-Anam',7:'Al-Araf',8:'Al-Anfal',9:'At-Tawbah',10:'Yunus',11:'Hud',12:'Yusuf',13:'Ar-Rad',14:'Ibrahim',15:'Al-Hijr',16:'An-Nahl',17:'Al-Isra',18:'Al-Kahf',19:'Maryam',20:'Ta-Ha',21:'Al-Anbiya',22:'Al-Hajj',23:'Al-Muminun',24:'An-Nur',25:'Al-Furqan',26:'Ash-Shuara',27:'An-Naml',28:'Al-Qasas',29:'Al-Ankabut',30:'Ar-Rum',31:'Luqman',32:'As-Sajdah',33:'Al-Ahzab',34:'Saba',35:'Fatir',36:'Ya-Sin',37:'As-Saffat',38:'Sad',39:'Az-Zumar',40:'Ghafir',41:'Fussilat',42:'Ash-Shura',43:'Az-Zukhruf',44:'Ad-Dukhan',45:'Al-Jathiyah',46:'Al-Ahqaf',47:'Muhammad',48:'Al-Fath',49:'Al-Hujurat',50:'Qaf',51:'Adh-Dhariyat',52:'At-Tur',53:'An-Najm',54:'Al-Qamar',55:'Ar-Rahman',56:'Al-Waqiah',57:'Al-Hadid',58:'Al-Mujadila',59:'Al-Hashr',60:'Al-Mumtahanah',61:'As-Saf',62:'Al-Jumuah',63:'Al-Munafiqun',64:'At-Taghabun',65:'At-Talaq',66:'At-Tahrim',67:'Al-Mulk',68:'Al-Qalam',69:'Al-Haqqah',70:'Al-Maarij',71:'Nuh',72:'Al-Jinn',73:'Al-Muzzammil',74:'Al-Muddaththir',75:'Al-Qiyamah',76:'Al-Insan',77:'Al-Mursalat',78:'An-Naba',79:'An-Naziat',80:'Abasa',81:'At-Takwir',82:'Al-Infitar',83:'Al-Mutaffifin',84:'Al-Inshiqaq',85:'Al-Buruj',86:'At-Tariq',87:'Al-Ala',88:'Al-Ghashiyah',89:'Al-Fajr',90:'Al-Balad',91:'Ash-Shams',92:'Al-Layl',93:'Ad-Duha',94:'Ash-Sharh',95:'At-Tin',96:'Al-Alaq',97:'Al-Qadr',98:'Al-Bayyinah',99:'Az-Zalzalah',100:'Al-Adiyat',101:"Al-Qari'ah",102:'At-Takathur',103:'Al-Asr',104:'Al-Humazah',105:'Al-Fil',106:'Quraysh',107:"Al-Ma'un",108:'Al-Kawthar',109:'Al-Kafirun',110:'An-Nasr',111:'Al-Masad',112:'Al-Ikhlas',113:'Al-Falaq',114:'An-Nas'};
+const AR_NAMES={1:'الفاتحة',2:'البقرة',3:'آل عمران',4:'النساء',5:'المائدة',6:'الأنعام',7:'الأعراف',8:'الأنفال',9:'التوبة',10:'يونس',11:'هود',12:'يوسف',13:'الرعد',14:'إبراهيم',15:'الحجر',16:'النحل',17:'الإسراء',18:'الكهف',19:'مريم',20:'طه',21:'الأنبياء',22:'الحج',23:'المؤمنون',24:'النور',25:'الفرقان',26:'الشعراء',27:'النمل',28:'القصص',29:'العنكبوت',30:'الروم',31:'لقمان',32:'السجدة',33:'الأحزاب',34:'سبأ',35:'فاطر',36:'يس',37:'الصافات',38:'ص',39:'الزمر',40:'غافر',41:'فصلت',42:'الشورى',43:'الزخرف',44:'الدخان',45:'الجاثية',46:'الأحقاف',47:'محمد',48:'الفتح',49:'الحجرات',50:'ق',51:'الذاريات',52:'الطور',53:'النجم',54:'القمر',55:'الرحمن',56:'الواقعة',57:'الحديد',58:'المجادلة',59:'الحشر',60:'الممتحنة',61:'الصف',62:'الجمعة',63:'المنافقون',64:'التغابن',65:'الطلاق',66:'التحريم',67:'الملك',68:'القلم',69:'الحاقة',70:'المعارج',71:'نوح',72:'الجن',73:'المزمل',74:'المدثر',75:'القيامة',76:'الإنسان',77:'المرسلات',78:'النبأ',79:'النازعات',80:'عبس',81:'التكوير',82:'الانفطار',83:'المطففين',84:'الانشقاق',85:'البروج',86:'الطارق',87:'الأعلى',88:'الغاشية',89:'الفجر',90:'البلد',91:'الشمس',92:'الليل',93:'الضحى',94:'الشرح',95:'التين',96:'العلق',97:'القدر',98:'البينة',99:'الزلزلة',100:'العاديات',101:'القارعة',102:'التكاثر',103:'العصر',104:'الهمزة',105:'الفيل',106:'قريش',107:'الماعون',108:'الكوثر',109:'الكافرون',110:'النصر',111:'المسد',112:'الإخلاص',113:'الفلق',114:'الناس'};
+const COUNTS={1:7,2:286,3:200,4:176,5:120,6:165,7:206,8:75,9:129,10:109,11:123,12:111,13:43,14:52,15:99,16:128,17:111,18:110,19:98,20:135,21:112,22:78,23:118,24:64,25:77,26:227,27:93,28:88,29:69,30:60,31:34,32:30,33:73,34:54,35:45,36:83,37:182,38:88,39:75,40:85,41:54,42:53,43:89,44:59,45:37,46:35,47:38,48:29,49:18,50:45,51:60,52:49,53:62,54:55,55:78,56:96,57:29,58:22,59:24,60:13,61:14,62:11,63:11,64:18,65:12,66:12,67:30,68:52,69:52,70:44,71:28,72:28,73:20,74:56,75:40,76:31,77:50,78:40,79:46,80:42,81:29,82:19,83:36,84:25,85:22,86:17,87:19,88:26,89:30,90:20,91:15,92:21,93:11,94:8,95:8,96:19,97:5,98:8,99:8,100:11,101:11,102:8,103:3,104:9,105:5,106:4,107:7,108:3,109:6,110:3,111:5,112:4,113:5,114:6};
+const REV={1:'M',2:'Med',3:'Med',4:'Med',5:'Med',6:'M',7:'M',8:'Med',9:'Med',10:'M',11:'M',12:'M',13:'Med',14:'M',15:'M',16:'M',17:'M',18:'M',19:'M',20:'M',21:'M',22:'Med',23:'M',24:'Med',25:'M',26:'M',27:'M',28:'M',29:'M',30:'M',31:'M',32:'M',33:'Med',34:'M',35:'M',36:'M',37:'M',38:'M',39:'M',40:'M',41:'M',42:'M',43:'M',44:'M',45:'M',46:'M',47:'Med',48:'Med',49:'Med',50:'M',51:'M',52:'M',53:'M',54:'M',55:'Med',56:'M',57:'Med',58:'Med',59:'Med',60:'Med',61:'Med',62:'Med',63:'Med',64:'Med',65:'Med',66:'Med',67:'M',68:'M',69:'M',70:'M',71:'M',72:'M',73:'M',74:'M',75:'M',76:'Med',77:'M',78:'M',79:'M',80:'M',81:'M',82:'M',83:'M',84:'M',85:'M',86:'M',87:'M',88:'M',89:'M',90:'M',91:'M',92:'M',93:'M',94:'M',95:'M',96:'M',97:'M',98:'Med',99:'Med',100:'M',101:'M',102:'M',103:'M',104:'M',105:'M',106:'M',107:'M',108:'M',109:'M',110:'Med',111:'M',112:'M',113:'M',114:'M'};
+
+// ══ DAILY AYAHS ═══════════════════════════════════════════════════════════════
+let dailyAyah = {ar:'',ur:'',ref:'',s:1,a:1};
+const DAILY_AYAHS=[
+  {ar:'لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا',ur:'اللہ کسی جان کو اس کی طاقت سے زیادہ تکلیف نہیں دیتا',ref:'Al-Baqarah 2:286',s:2,a:286},
+  {ar:'وَمَن يَتَّقِ اللَّهَ يَجْعَل لَّهُ مَخْرَجًا',ur:'جو اللہ سے ڈرے اللہ اس کے لیے راہ نکالتا ہے',ref:'At-Talaq 65:2',s:65,a:2},
+  {ar:'إِنَّ مَعَ الْعُسْرِ يُسْرًا',ur:'بے شک تکلیف کے ساتھ آسانی ہے',ref:'Ash-Sharh 94:6',s:94,a:6},
+  {ar:'حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ',ur:'ہمارے لیے اللہ کافی ہے اور وہ بہترین کارساز ہے',ref:'Al-Imran 3:173',s:3,a:173},
+  {ar:'إِنَّ اللَّهَ مَعَ الصَّابِرِينَ',ur:'بے شک اللہ صبر کرنے والوں کے ساتھ ہے',ref:'Al-Baqarah 2:153',s:2,a:153},
+  {ar:'اللَّهُ نُورُ السَّمَاوَاتِ وَالْأَرْضِ',ur:'اللہ آسمانوں اور زمین کا نور ہے',ref:'An-Nur 24:35',s:24,a:35},
+  {ar:'وَنَحْنُ أَقْرَبُ إِلَيْهِ مِنْ حَبْلِ الْوَرِيدِ',ur:'اور ہم اس کی شہ رگ سے بھی زیادہ قریب ہیں',ref:'Qaf 50:16',s:50,a:16},
+  {ar:'فَبِأَيِّ آلَاءِ رَبِّكُمَا تُكَذِّبَانِ',ur:'تم اپنے رب کی کن کن نعمتوں کو جھٹلاؤ گے',ref:'Ar-Rahman 55:13',s:55,a:13},
+  {ar:'وَلَذِكْرُ اللَّهِ أَكْبَرُ',ur:'اللہ کا ذکر سب سے بڑا ہے',ref:'Al-Ankabut 29:45',s:29,a:45},
+  {ar:'رَبِّ زِدْنِي عِلْمًا',ur:'اے میرے رب میرے علم میں اضافہ فرما',ref:'Ta-Ha 20:114',s:20,a:114},
+];
+
+// ══ CHALLENGES ════════════════════════════════════════════════════════════════
+const CHALLENGES = {
+  daily: [
+    {key:'d_2min',  emoji:'⚡',name:'Quick Recitation',   desc:'Read for 2 minutes',       xp:50,  secs:120,  type:'timer'},
+    {key:'d_5min',  emoji:'🌿',name:'5 Minute Focus',     desc:'Read for 5 minutes',       xp:150, secs:300,  type:'timer'},
+    {key:'d_10min', emoji:'🔥',name:'Deep Reading',       desc:'Read for 10 minutes',      xp:350, secs:600,  type:'timer'},
+    {key:'d_fatiha',emoji:'📖',name:'Al-Fatiha',          desc:'Read Al-Fatiha with meaning',xp:30, surah:1,   type:'surah'},
+    {key:'d_ikhlas',emoji:'✨',name:'Al-Ikhlas × 3',      desc:'Read Al-Ikhlas 3 times',   xp:60,  surah:112,  type:'surah'},
+  ],
+  supplement: [
+    {key:'s_morning',emoji:'🌅',name:'Morning Supplement', desc:'أذكار الصباح · Start your day',        xp:80,  type:'dua',  cat:'morning'},
+    {key:'s_night',  emoji:'🌙',name:'Night Supplement',   desc:'أذكار المساء · End your day',          xp:80,  type:'dua',  cat:'evening'},
+    {key:'s_sleep',  emoji:'🌠',name:'Sleep Surahs',       desc:'Qul surahs before sleep',              xp:100, type:'supp', id:'night_surahs'},
+    {key:'s_fajr',   emoji:'🕌',name:'After Fajr',         desc:'Surah Yasin · Every morning',          xp:200, surah:36,   type:'surah'},
+  ],
+  weekly: [
+    {key:'w_kahf',   emoji:'🕌',name:'Jumma Special',      desc:'Read Surah Al-Kahf · Every Friday',    xp:300, surah:18,   type:'surah'},
+    {key:'w_mulk',   emoji:'🌙',name:'Night of Mulk',      desc:'Surah Al-Mulk before sleep',           xp:200, surah:67,   type:'surah'},
+    {key:'w_rahman', emoji:'💚',name:'Ar-Rahman Full',     desc:'Complete Surah Ar-Rahman',             xp:250, surah:55,   type:'surah'},
+  ],
+  monthly: [
+    {key:'m_juzamma',emoji:'📚',name:'Complete Juz Amma',  desc:'All 37 surahs of Juz 30',             xp:1000,type:'multi', surahs:[78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114]},
+    {key:'m_mulk',   emoji:'👑',name:'Mulk 30 Days',       desc:'Read Al-Mulk every day for a month',  xp:2000,type:'streak30', surah:67},
+    {key:'m_kahf',   emoji:'📿',name:'Kahf 4 Fridays',     desc:'Read Al-Kahf all 4 Fridays',           xp:1200,type:'streak4',  surah:18},
+  ],
+  occasion: [
+    {key:'o_ramadan', emoji:'🌙',name:'Ramadan Quran',     desc:'Complete 1 Juz each day of Ramadan',  xp:500, type:'info'},
+    {key:'o_laylatul',emoji:'⭐',name:"Laylat ul-Qadr",    desc:'Night of Power — 1000 months of worship', xp:1000, type:'info'},
+    {key:'o_ashura',  emoji:'🤲',name:'Day of Ashura',     desc:'Fast & recite Surah Al-Ikhlas 1000×', xp:500, type:'info'},
+    {key:'o_arafah',  emoji:'🏔',name:'Day of Arafah',     desc:'Most sins forgiven — recite & make dua',xp:500, type:'info'},
+  ],
+};
+
+// ══ DUAS DATA ═════════════════════════════════════════════════════════════════
+const DUAS = {
+  morning: [
+    {title:'Upon Waking',arabic:'أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ وَالْحَمْدُ لِلَّهِ',urdu:'ہم نے صبح کی اور اللہ کی بادشاہت نے صبح کی، اور تمام تعریف اللہ کے لیے ہے',source:'Abu Dawud'},
+    {title:'Morning Glory',arabic:'اللَّهُمَّ بِكَ أَصْبَحْنَا وَبِكَ أَمْسَيْنَا وَبِكَ نَحْيَا وَبِكَ نَمُوتُ وَإِلَيْكَ النُّشُورُ',urdu:'اے اللہ! تیرے نام سے ہم نے صبح کی، تیرے نام سے شام کی، تیرے نام سے جیتے ہیں، تیرے نام سے مریں گے اور تیری طرف اٹھائے جائیں گے',source:'Tirmidhi'},
+    {title:'Protection Dua',arabic:'اللَّهُمَّ إِنِّي أَسْأَلُكَ الْعَفْوَ وَالْعَافِيَةَ فِي الدُّنْيَا وَالآخِرَةِ',urdu:'اے اللہ! میں دنیا اور آخرت میں معافی اور عافیت مانگتا ہوں',source:'Abu Dawud'},
+    {title:'Sayyidul Istighfar',arabic:'اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ خَلَقْتَنِي وَأَنَا عَبْدُكَ',urdu:'اے اللہ! تو میرا رب ہے، تیرے سوا کوئی معبود نہیں، تو نے مجھے پیدا کیا اور میں تیرا بندہ ہوں',source:'Bukhari'},
+  ],
+  evening: [
+    {title:'Evening Remembrance',arabic:'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ وَالْحَمْدُ لِلَّهِ',urdu:'ہم نے شام کی اور اللہ کی بادشاہت نے شام کی، اور تمام تعریف اللہ کے لیے ہے',source:'Abu Dawud'},
+    {title:'100× Istighfar',arabic:'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',urdu:'میں اللہ سے معافی مانگتا ہوں اور اس کی طرف رجوع کرتا ہوں — 100 مرتبہ',source:'Bukhari'},
+    {title:'Protection at Night',arabic:'أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ',urdu:'میں اللہ کے تمام کامل کلمات کے ذریعے ہر اس چیز کی برائی سے پناہ مانگتا ہوں جو اس نے پیدا کی',source:'Muslim'},
+  ],
+  sleep: [
+    {title:'Before Sleep',arabic:'بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا',urdu:'اے اللہ! تیرے نام سے مرتا اور جیتا ہوں',source:'Bukhari'},
+    {title:'Ayatul Kursi',arabic:'اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ',urdu:'اللہ — اس کے سوا کوئی معبود نہیں، وہ زندہ ہے، قائم رکھنے والا ہے',source:'Quran 2:255 — reads with Quranly before sleep'},
+    {title:'Al-Ikhlas × 3',arabic:'قُلْ هُوَ اللَّهُ أَحَدٌ اللَّهُ الصَّمَدُ',urdu:'کہو: وہ اللہ ایک ہے — اللہ بے نیاز ہے — 3 بار پڑھنا سارے قرآن کے برابر',source:'Bukhari'},
+  ],
+  salah: [
+    {title:'Before Wudu',arabic:'بِسْمِ اللَّهِ',urdu:'اللہ کے نام سے شروع کرتا ہوں',source:'Abu Dawud'},
+    {title:'After Wudu',arabic:'أَشْهَدُ أَنْ لَا إِلَهَ إِلَّا اللَّهُ وَأَشْهَدُ أَنَّ مُحَمَّدًا عَبْدُهُ وَرَسُولُهُ',urdu:'میں گواہی دیتا ہوں کہ اللہ کے سوا کوئی معبود نہیں اور محمد ﷺ اس کے بندے اور رسول ہیں',source:'Muslim'},
+    {title:'After Salah',arabic:'سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ وَاللَّهُ أَكْبَرُ',urdu:'اللہ پاک ہے، تمام تعریف اللہ کے لیے ہے، اللہ سب سے بڑا ہے — 33،33،33 مرتبہ',source:'Muslim'},
+  ],
+  travel: [
+    {title:'Leaving Home',arabic:'بِسْمِ اللَّهِ تَوَكَّلْتُ عَلَى اللَّهِ وَلَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ',urdu:'اللہ کے نام سے، اللہ پر بھروسہ کیا، اور کوئی طاقت و قوت نہیں سوائے اللہ کے',source:'Abu Dawud'},
+    {title:'Entering Vehicle',arabic:'سُبْحَانَ الَّذِي سَخَّرَ لَنَا هَذَا وَمَا كُنَّا لَهُ مُقْرِنِينَ',urdu:'پاک ہے وہ ذات جس نے ہمارے لیے یہ مسخر کیا اور ہم اسے قابو کرنے والے نہ تھے',source:'Quran 43:13'},
+  ],
+};
+
+// ══ SUPPLEMENT CONTENT ════════════════════════════════════════════════════════
+const SUPPLEMENTS = {
+  morning: {
+    title:'🌅 Morning Supplement',
+    items:[
+      {ar:'أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ',ur:'ہم نے صبح کی اور اللہ کی بادشاہت نے صبح کی',ref:'Morning Dua'},
+      {ar:'اللَّهُمَّ بِكَ أَصْبَحْنَا',ur:'اے اللہ تیرے نام سے ہم نے صبح کی',ref:'Morning Dua'},
+      {ar:'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ ۝ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ',ur:'اللہ کے نام سے — تمام تعریف اللہ ہی کے لیے ہے جو تمام جہانوں کا پروردگار ہے',ref:'Al-Fatiha 1:1-2'},
+      {ar:'قُلْ هُوَ اللَّهُ أَحَدٌ',ur:'کہو: وہ اللہ ایک ہے',ref:'Al-Ikhlas 112:1'},
+      {ar:'اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ',ur:'اللہ — اس کے سوا کوئی معبود نہیں',ref:'Ayatul Kursi 2:255'},
+    ]
+  },
+  night: {
+    title:'🌙 Night Supplement',
+    items:[
+      {ar:'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ',ur:'ہم نے شام کی اور اللہ کی بادشاہت نے شام کی',ref:'Evening Dua'},
+      {ar:'أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ',ur:'میں اللہ کے تمام کامل کلمات کے ذریعے پناہ مانگتا ہوں',ref:'Evening Dua'},
+      {ar:'اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ',ur:'اللہ — اس کے سوا کوئی معبود نہیں',ref:'Ayatul Kursi'},
+      {ar:'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ',ur:'کہو: میں صبح کے رب کی پناہ مانگتا ہوں',ref:'Al-Falaq 113:1'},
+      {ar:'قُلْ أَعُوذُ بِرَبِّ النَّاسِ',ur:'کہو: میں لوگوں کے رب کی پناہ مانگتا ہوں',ref:'An-Nas 114:1'},
+    ]
+  },
+  night_surahs: {
+    title:'🌠 Sleep Surahs',
+    items:[
+      {ar:'قُلْ هُوَ اللَّهُ أَحَدٌ اللَّهُ الصَّمَدُ لَمْ يَلِدْ وَلَمْ يُولَدْ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ',ur:'کہو وہ اللہ ایک ہے — اللہ بے نیاز ہے — نہ اس نے کسی کو جنا نہ وہ جنا گیا',ref:'Al-Ikhlas (×3)'},
+      {ar:'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ مِن شَرِّ مَا خَلَقَ',ur:'کہو میں صبح کے رب کی پناہ مانگتا ہوں — ہر اس چیز کی برائی سے جو اس نے پیدا کی',ref:'Al-Falaq (×3)'},
+      {ar:'قُلْ أَعُوذُ بِرَبِّ النَّاسِ مَلِكِ النَّاسِ إِلَهِ النَّاسِ',ur:'کہو میں لوگوں کے رب کی پناہ مانگتا ہوں — لوگوں کے بادشاہ کی — لوگوں کے معبود کی',ref:'An-Nas (×3)'},
+      {ar:'بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا',ur:'اے اللہ تیرے نام سے مرتا اور جیتا ہوں',ref:'Sleep Dua'},
+    ]
+  },
+  jumma: {
+    title:'🕌 Jumma Special — Surah Al-Kahf',
+    items:[
+      {ar:'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ الْحَمْدُ لِلَّهِ الَّذِي أَنزَلَ عَلَىٰ عَبْدِهِ الْكِتَابَ',ur:'اللہ کے نام سے — تمام تعریف اللہ کے لیے جس نے اپنے بندے پر کتاب نازل کی',ref:'Al-Kahf 18:1'},
+      {ar:'إِنَّا جَعَلْنَا مَا عَلَى الْأَرْضِ زِينَةً لَّهَا لِنَبْلُوَهُمْ أَيُّهُمْ أَحْسَنُ عَمَلًا',ur:'بے شک ہم نے زمین پر جو کچھ ہے اسے اس کی زینت بنایا تاکہ ان کو آزمائیں کہ ان میں سے کون عمل میں بہتر ہے',ref:'Al-Kahf 18:7'},
+    ]
+  },
+};
+
+// ══ BADGES ════════════════════════════════════════════════════════════════════
+const BADGES=[
+  {icon:'🔥',lbl:'3-Day\nStreak',key:'streak_3',check:()=>S.streak>=3},
+  {icon:'💎',lbl:'7-Day\nStreak',key:'streak_7',check:()=>S.streak>=7},
+  {icon:'🌟',lbl:'30-Day\nStreak',key:'streak_30',check:()=>S.streak>=30},
+  {icon:'📖',lbl:'First\nSurah',key:'first_surah',check:()=>S.ayaatRead>0},
+  {icon:'✨',lbl:'100\nAyaat',key:'100_ayaat',check:()=>S.ayaatRead>=100},
+  {icon:'🏆',lbl:'500\nAyaat',key:'500_ayaat',check:()=>S.ayaatRead>=500},
+  {icon:'⚡',lbl:'Level\n5',key:'level_5',check:()=>calcLevel()>=5},
+  {icon:'🕌',lbl:'Jumma\nKahf',key:'jumma_kahf',check:()=>S.done['w_kahf']},
+  {icon:'🌙',lbl:'Night\nSupp',key:'night_supp',check:()=>S.done['s_night']},
+  {icon:'🌅',lbl:'Morning\nSupp',key:'morning_supp',check:()=>S.done['s_morning']},
+  {icon:'🤲',lbl:'First\nDua',key:'first_dua',check:()=>true},  // always earned for opening Duas
+  {icon:'💫',lbl:'1000 XP',key:'xp_1000',check:()=>S.totalXp>=1000},
+];
+
+// ══ UTILS ═════════════════════════════════════════════════════════════════════
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmt=s=>{const m=Math.floor(s/60),sec=s%60;return`${m}:${sec.toString().padStart(2,'0')}`;};
+const today=()=>new Date().toDateString();
+
+function calcLevel(){
+  let lvl=1;
+  for(let i=0;i<LEVELS.length;i++){if(S.totalXp>=LEVELS[i])lvl=i+1;}
+  return Math.min(lvl,LEVELS.length);
+}
+
+function addXP(amount, label=''){
+  S.xp      += amount;
+  S.totalXp += amount;
+  localStorage.setItem('nq_xp', S.xp);
+  localStorage.setItem('nq_total_xp', S.totalXp);
+  showToast(`+${amount} XP${label?' · '+label:''}⚡`);
+  updateHomeStats();
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show';
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function showPage(id, btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.bn-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  else {
+    const map={home:0,read:1,goals:2,duas:3,me:4};
+    if(map[id]!==undefined) document.querySelectorAll('.bn-btn')[map[id]]?.classList.add('active');
+  }
+  if(id==='home')  renderHome();
+  if(id==='goals') renderGoals();
+  if(id==='duas')  renderDuas();
+  if(id==='me')    renderMe();
+}
+
+// ══ STREAK ════════════════════════════════════════════════════════════════════
+function initStreak(){
+  const todayStr = today();
+  const last     = localStorage.getItem('nq_last_visit');
+  let   streak   = parseInt(localStorage.getItem('nq_streak')||'0');
+  if     (last===todayStr) {}
+  else if(last===new Date(Date.now()-86400000).toDateString()){ streak++; localStorage.setItem('nq_streak',streak); }
+  else  { streak=1; localStorage.setItem('nq_streak',streak); }
+  localStorage.setItem('nq_last_visit', todayStr);
+  S.streak = streak;
+  // Reset daily XP if new day
+  if(last !== todayStr){ S.xp=0; localStorage.setItem('nq_xp',0); }
+}
+
+// ══ HOME ══════════════════════════════════════════════════════════════════════
+function renderHome(){
+  updateHomeStats();
+  // Greeting
+  const h = new Date().getHours();
+  const gr = h<12?'صباح الخیر — Good Morning 🌅': h<17?'السلام علیکم 🌿': h<20?'مساء الخیر — Good Evening 🌙':'لیلۃ طیبہ — Good Night ⭐';
+  const el = document.getElementById('hero-greeting');
+  if(el) el.textContent = gr;
+  // Date
+  const de = document.getElementById('hero-date');
+  if(de){
+    const now = new Date();
+    de.innerHTML = now.toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long'});
+  }
+  // Daily ayah
+  dailyAyah = DAILY_AYAHS[new Date().getDate()%DAILY_AYAHS.length];
+  const dacR  = document.getElementById('dac-ref');
+  const dacAr = document.getElementById('dac-arabic');
+  const dacUr = document.getElementById('dac-urdu');
+  if(dacR)  dacR.textContent  = dailyAyah.ref;
+  if(dacAr) dacAr.innerHTML   = S.tajweed?applyTajweed(dailyAyah.ar):esc(dailyAyah.ar);
+  if(dacUr) dacUr.textContent = dailyAyah.ur;
+  // Play button
+  const pp = document.getElementById('dac-play');
+  if(pp) pp.onclick = ()=>playDailyAyah(pp);
+  // Challenge card
+  const dc = CHALLENGES.daily[1]; // 5-min
+  const prog = S.done[dc.key]?100:0;
+  document.getElementById('chc-title').textContent = dc.name;
+  document.getElementById('chc-desc').textContent  = dc.desc;
+  document.getElementById('chc-home-prog').style.width = prog+'%';
+  // Continue reading
+  const cc  = document.getElementById('cc-title');
+  const ccs = document.getElementById('cc-sub');
+  if(cc)  cc.textContent  = EN_NAMES[S.lastSurah]||'Al-Fatihah';
+  if(ccs) ccs.textContent = `${AR_NAMES[S.lastSurah]||''} · Ayah ${S.lastAyah+1}`;
+  // Occasion banner
+  checkOccasion();
+  // Monthly progress
+  const juzAmmaSurahs=[78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114];
+  const done=juzAmmaSurahs.filter(n=>S.done['read_'+n]).length;
+  const pct=Math.round(done/juzAmmaSurahs.length*100);
+  const mp=document.getElementById('mc-prog');
+  const mpct=document.getElementById('mc-pct');
+  if(mp) mp.style.width=pct+'%';
+  if(mpct) mpct.textContent=pct+'% complete ('+done+'/37 surahs)';
+}
+
+function updateHomeStats(){
+  const lvl=calcLevel();
+  const curLvlXp=LEVELS[lvl-1]||0;
+  const nxtLvlXp=LEVELS[lvl]||LEVELS[LEVELS.length-1];
+  const pct=Math.min(100,Math.round((S.totalXp-curLvlXp)/(nxtLvlXp-curLvlXp)*100));
+  const sb=document.getElementById('hs-streak'); if(sb) sb.textContent=S.streak;
+  const xb=document.getElementById('hs-xp');     if(xb) xb.textContent=S.xp;
+  const ab=document.getElementById('hs-ayaat');  if(ab) ab.textContent=S.ayaatRead;
+  const bar=document.getElementById('xp-bar');   if(bar) bar.style.width=pct+'%';
+  const lbl=document.getElementById('xp-label'); if(lbl) lbl.textContent=`Level ${lvl} · ${S.totalXp.toLocaleString()} XP`;
+}
+
+function checkOccasion(){
+  const banner=document.getElementById('occasion-banner');
+  if(!banner) return;
+  const now=new Date(); const d=now.getDate(); const m=now.getMonth()+1;
+  const dow=now.getDay(); // 0=Sun 5=Fri
+  let msg='';
+  if(dow===5) msg='🕌 Jumma Mubarak! Read Surah Al-Kahf today for extra blessings';
+  else if(m===9) msg='🌙 Ramadan Mubarak! Extra rewards for every letter recited';
+  else if(m===12&&d>=1&&d<=10) msg='🏔 First 10 days of Dhul Hijjah — best days of the year!';
+  if(msg){ banner.style.display='block'; banner.textContent=msg; }
+  else banner.style.display='none';
+}
+
+function playDailyAyah(btn){
+  const s=String(dailyAyah.s).padStart(3,'0');
+  const a=String(dailyAyah.a).padStart(3,'0');
+  const url=AUDIO+s+'/'+a+'.mp3';
+  if(window._dayAudio){ window._dayAudio.pause(); window._dayAudio=null; btn.textContent='▶ Play'; return; }
+  window._dayAudio=new Audio(url);
+  btn.textContent='⏸ Stop';
+  window._dayAudio.play().catch(()=>{btn.textContent='▶ Play';});
+  window._dayAudio.onended=()=>{btn.textContent='▶ Play';window._dayAudio=null;};
+}
+
+function continueReading(){ openSurahReader(S.lastSurah, S.lastAyah); }
+
+// ══ GOALS ═════════════════════════════════════════════════════════════════════
+function renderGoals(){
+  renderChallengeList('daily-challenges-list', CHALLENGES.daily);
+  renderChallengeList('supplement-list', CHALLENGES.supplement);
+  renderChallengeList('weekly-list', CHALLENGES.weekly);
+  renderChallengeList('monthly-list', CHALLENGES.monthly);
+  renderChallengeList('occasion-list', CHALLENGES.occasion);
+}
+
+function renderChallengeList(id, list){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.innerHTML=list.map(c=>{
+    const done=S.done[c.key];
+    return`<div class="chl-item${done?' done':''}" onclick="handleChallenge('${c.key}')">
+      <div class="chl-top">
+        <span class="chl-emoji">${c.emoji}</span>
+        <div class="chl-info">
+          <div class="chl-name">${c.name}</div>
+          <div class="chl-desc">${c.desc}</div>
+        </div>
+        <div class="chl-right">
+          <div class="chl-xp">+${c.xp} XP</div>
+          ${done?'<div><span class="chl-done-badge">✓ Done</span></div>':'<div class="chl-status">Tap to start</div>'}
+        </div>
+      </div>
+      <div class="chl-prog-wrap"><div class="chl-prog-fill" style="width:${done?100:0}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function handleChallenge(key){
+  const all=[...CHALLENGES.daily,...CHALLENGES.supplement,...CHALLENGES.weekly,...CHALLENGES.monthly,...CHALLENGES.occasion];
+  const c=all.find(x=>x.key===key);
+  if(!c) return;
+  if(c.type==='timer')     startChallenge(key, c);
+  else if(c.type==='surah') openSurahReader(c.surah, 0, key);
+  else if(c.type==='dua')   openSupplement(c.cat, key);
+  else if(c.type==='supp')  openSupplement(c.id, key);
+  else if(c.type==='info')  showToast('🌙 '+c.name+' — track manually in your journal');
+  else if(c.type==='multi') openSurahReader(c.surahs[0], 0, key);
+}
+
+// ══ TIMED CHALLENGE ═══════════════════════════════════════════════════════════
+let _chalTimer=null, _chalElapsed=0, _chalTarget=0, _chalXP=0, _chalKey='';
+function startChallenge(key, c){
+  const all=[...CHALLENGES.daily,...CHALLENGES.supplement,...CHALLENGES.weekly,...CHALLENGES.monthly];
+  c=c||all.find(x=>x.key===key)||{name:'Challenge',xp:100,secs:120};
+  _chalKey=key||'d_2min'; _chalElapsed=0; _chalTarget=c.secs||120; _chalXP=c.xp||50;
+  document.getElementById('co-title').textContent=c.name||'Challenge';
+  document.getElementById('co-timer').textContent=fmt(0);
+  document.getElementById('co-prog').style.width='0%';
+  document.getElementById('co-pts').textContent='+0 XP';
+  document.getElementById('co-msg').textContent='Reading time started — open Read tab!';
+  document.getElementById('challenge-overlay').style.display='flex';
+  clearInterval(_chalTimer);
+  _chalTimer=setInterval(()=>{
+    _chalElapsed++;
+    const pct=Math.min(100,_chalElapsed/_chalTarget*100);
+    const pts=Math.floor(_chalElapsed*(_chalXP/_chalTarget));
+    document.getElementById('co-timer').textContent=fmt(_chalElapsed);
+    document.getElementById('co-prog').style.width=pct+'%';
+    document.getElementById('co-pts').textContent='+'+pts+' XP';
+    if(_chalElapsed===Math.floor(_chalTarget*0.5)) document.getElementById('co-msg').textContent='Halfway there! Keep going 💪';
+    if(_chalElapsed>=_chalTarget){ clearInterval(_chalTimer); finishChallenge(); }
+  },1000);
+}
+
+function finishChallenge(){
+  clearInterval(_chalTimer);
+  document.getElementById('co-timer').textContent='Done! 🌟';
+  document.getElementById('co-msg').textContent='Mashallah! Challenge complete!';
+  document.getElementById('co-prog').style.width='100%';
+  addXP(_chalXP, 'Challenge');
+  markDone(_chalKey);
+  setTimeout(endChallenge, 1500);
+}
+
+function completeChallengeManually(){
+  const pts=Math.floor(_chalElapsed*(_chalXP/_chalTarget));
+  clearInterval(_chalTimer);
+  addXP(Math.max(pts, Math.floor(_chalXP*0.3)), 'Partial');
+  markDone(_chalKey);
+  endChallenge();
+}
+
+function endChallenge(){
+  clearInterval(_chalTimer);
+  document.getElementById('challenge-overlay').style.display='none';
+}
+
+function markDone(key){
+  S.done[key]=today();
+  localStorage.setItem('nq_done', JSON.stringify(S.done));
+  S.challenges++;
+  localStorage.setItem('nq_chal', S.challenges);
+  renderGoals();
+}
+
+// ══ SUPPLEMENTS ═══════════════════════════════════════════════════════════════
+let _suppKey='', _suppXP=80;
+function openSupplement(id, key){
+  const supp=SUPPLEMENTS[id];
+  if(!supp) return;
+  _suppKey=key||('s_'+id); _suppXP=80;
+  document.getElementById('supp-title').textContent=supp.title;
+  document.getElementById('supp-content').innerHTML=supp.items.map((item,i)=>`
+    <div class="supp-ayah">
+      <div class="supp-ar">${esc(item.ar)}</div>
+      <div class="supp-ur">${esc(item.ur)}</div>
+      <div class="supp-ref">${item.ref}</div>
+    </div>`).join('');
+  document.getElementById('supp-overlay').style.display='flex';
+}
+function closeSupp(){ document.getElementById('supp-overlay').style.display='none'; }
+function completeSupplement(){ addXP(_suppXP,'Supplement'); markDone(_suppKey); closeSupp(); }
+
+// ══ READ PAGE ═════════════════════════════════════════════════════════════════
+async function initReadPage(){
+  await loadQ();
+  const picker=document.getElementById('surah-picker');
+  if(!picker||picker.options.length>1) return;
+  for(let n=1;n<=114;n++){
+    const o=document.createElement('option');
+    o.value=n;
+    o.textContent=`${n}. ${EN_NAMES[n]} · ${AR_NAMES[n]}`;
+    picker.appendChild(o);
   }
 }
 
-// Arabic & English surah names
-const arabicSurahNames = {1:'الفاتحة',2:'البقرة',3:'آل عمران',4:'النساء',5:'المائدة',6:'الأنعام',7:'الأعراف',8:'الأنفال',9:'التوبة',10:'يونس',11:'هود',12:'يوسف',13:'الرعد',14:'إبراهيم',15:'الحجر',16:'النحل',17:'الإسراء',18:'الكهف',19:'مريم',20:'طه',21:'الأنبياء',22:'الحج',23:'المؤمنون',24:'النور',25:'الفرقان',26:'الشعراء',27:'النمل',28:'القصص',29:'العنكبوت',30:'الروم',31:'لقمان',32:'السجدة',33:'الأحزاب',34:'سبأ',35:'فاطر',36:'يس',37:'الصافات',38:'ص',39:'الزمر',40:'غافر',41:'فصلت',42:'الشورى',43:'الزخرف',44:'الدخان',45:'الجاثية',46:'الأحقاف',47:'محمد',48:'الفتح',49:'الحجرات',50:'ق',51:'الذاريات',52:'الطور',53:'النجم',54:'القمر',55:'الرحمن',56:'الواقعة',57:'الحديد',58:'المجادلة',59:'الحشر',60:'الممتحنة',61:'الصف',62:'الجمعة',63:'المنافقون',64:'التغابن',65:'الطلاق',66:'التحريم',67:'الملك',68:'القلم',69:'الحاقة',70:'المعارج',71:'نوح',72:'الجن',73:'المزمل',74:'المدثر',75:'القيامة',76:'الإنسان',77:'المرسلات',78:'النبأ',79:'النازعات',80:'عبس',81:'التكوير',82:'الانفطار',83:'المطففين',84:'الانشقاق',85:'البروج',86:'الطارق',87:'الأعلى',88:'الغاشية',89:'الفجر',90:'البلد',91:'الشمس',92:'الليل',93:'الضحى',94:'الشرح',95:'التين',96:'العلق',97:'القدر',98:'البينة',99:'الزلزلة',100:'العاديات',101:'القارعة',102:'التكاثر',103:'العصر',104:'الهمزة',105:'الفيل',106:'قريش',107:'الماعون',108:'الكوثر',109:'الكافرون',110:'النصر',111:'المسد',112:'الإخلاص',113:'الفلق',114:'الناس'};
+function setReadMode(mode, btn){
+  S.readMode=mode;
+  document.querySelectorAll('.mode-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(S.lastSurah) renderAyahList(S.lastSurah);
+}
 
-const englishSurahNames = {1:'Al-Fatihah',2:'Al-Baqarah',3:"Aal-i-Imraan",4:'An-Nisa',5:'Al-Maidah',6:'Al-Anam',7:'Al-Araf',8:'Al-Anfal',9:'At-Tawbah',10:'Yunus',11:'Hud',12:'Yusuf',13:'Ar-Rad',14:'Ibrahim',15:'Al-Hijr',16:'An-Nahl',17:'Al-Isra',18:'Al-Kahf',19:'Maryam',20:'Ta-Ha',21:'Al-Anbiya',22:'Al-Hajj',23:'Al-Muminun',24:'An-Nur',25:'Al-Furqan',26:'Ash-Shuara',27:'An-Naml',28:'Al-Qasas',29:'Al-Ankabut',30:'Ar-Rum',31:'Luqman',32:'As-Sajdah',33:'Al-Ahzab',34:'Saba',35:'Fatir',36:'Ya-Sin',37:'As-Saffat',38:'Sad',39:'Az-Zumar',40:'Ghafir',41:'Fussilat',42:'Ash-Shura',43:'Az-Zukhruf',44:'Ad-Dukhan',45:'Al-Jathiyah',46:'Al-Ahqaf',47:'Muhammad',48:'Al-Fath',49:'Al-Hujurat',50:'Qaf',51:'Adh-Dhariyat',52:'At-Tur',53:'An-Najm',54:'Al-Qamar',55:'Ar-Rahman',56:'Al-Waqiah',57:'Al-Hadid',58:'Al-Mujadila',59:'Al-Hashr',60:'Al-Mumtahanah',61:'As-Saf',62:'Al-Jumuah',63:'Al-Munafiqun',64:'At-Taghabun',65:'At-Talaq',66:'At-Tahrim',67:'Al-Mulk',68:'Al-Qalam',69:'Al-Haqqah',70:'Al-Maarij',71:'Nuh',72:'Al-Jinn',73:'Al-Muzzammil',74:'Al-Muddaththir',75:'Al-Qiyamah',76:'Al-Insan',77:'Al-Mursalat',78:"An-Naba",79:'An-Naziat',80:'Abasa',81:'At-Takwir',82:'Al-Infitar',83:'Al-Mutaffifin',84:'Al-Inshiqaq',85:'Al-Buruj',86:'At-Tariq',87:'Al-Ala',88:'Al-Ghashiyah',89:'Al-Fajr',90:'Al-Balad',91:'Ash-Shams',92:'Al-Layl',93:'Ad-Duha',94:'Ash-Sharh',95:'At-Tin',96:'Al-Alaq',97:'Al-Qadr',98:'Al-Bayyinah',99:'Az-Zalzalah',100:'Al-Adiyat',101:"Al-Qari'ah",102:'At-Takathur',103:'Al-Asr',104:'Al-Humazah',105:'Al-Fil',106:'Quraysh',107:"Al-Ma'un",108:'Al-Kawthar',109:'Al-Kafirun',110:'An-Nasr',111:'Al-Masad',112:'Al-Ikhlas',113:'Al-Falaq',114:'An-Nas'};
+async function loadAndRead(num){
+  if(!num) return;
+  await loadQ();
+  S.lastSurah=parseInt(num);
+  localStorage.setItem('nq_last_surah',num);
+  renderAyahList(num);
+}
 
-const surahMeanings = {1:'The Opening',2:'The Cow',3:'Family of Imran',4:'The Women',5:'The Table Spread',6:'The Cattle',7:'The Heights',8:'The Spoils of War',9:'The Repentance',10:'Jonah',11:'Hud',12:'Joseph',13:'The Thunder',14:'Abraham',15:'The Rocky Tract',16:'The Bee',17:'The Night Journey',18:'The Cave',19:'Mary',20:'Ta-Ha',21:'The Prophets',22:'The Pilgrimage',23:'The Believers',24:'The Light',25:'The Criterion',26:'The Poets',27:'The Ant',28:'The Stories',29:'The Spider',30:'The Romans',31:'Luqman',32:'The Prostration',33:'The Combined Forces',34:'Sheba',35:'The Originator',36:'Ya-Sin',37:'Those Who Set The Ranks',38:'The Letter Sad',39:'The Troops',40:'The Forgiver',41:'Explained in Detail',42:'The Consultation',43:'The Gold Adornments',44:'The Smoke',45:'The Crouching',46:'The Wind-Curved Sandhills',47:'Muhammad',48:'The Victory',49:'The Private Apartments',50:'The Letter Qaf',51:'The Winnowing Winds',52:'The Mount',53:'The Star',54:'The Moon',55:'The Beneficent',56:'The Inevitable',57:'The Iron',58:'She That Disputeth',59:'The Exile',60:'She That is to be Examined',61:'The Ranks',62:'The Congregation',63:'The Hypocrites',64:'Mutual Disillusion',65:'Divorce',66:'The Prohibition',67:'The Sovereignty',68:'The Pen',69:'The Reality',70:"The Ascending Stairways",71:'Noah',72:'The Jinn',73:'The Enshrouded One',74:'The Cloaked One',75:'The Resurrection',76:'The Man',77:'The Emissaries',78:'The Tidings',79:'Those Who Drag Forth',80:'He Frowned',81:'The Overthrowing',82:'The Cleaving',83:'The Defrauding',84:'The Sundering',85:'The Mansions of the Stars',86:'The Nightcommer',87:'The Most High',88:'The Overwhelming',89:'The Dawn',90:'The City',91:'The Sun',92:'The Night',93:'The Morning Hours',94:'The Relief',95:'The Fig',96:'The Clot',97:'The Power',98:'The Clear Proof',99:'The Earthquake',100:'The Courser',101:"The Calamity",102:'The Rivalry in World Increase',103:'The Declining Day',104:'The Traducer',105:'The Elephant',106:'Quraysh',107:'The Small Kindnesses',108:'The Abundance',109:'The Disbelievers',110:'The Divine Support',111:'The Palm Fiber',112:'Sincerity',113:'The Daybreak',114:'Mankind'};
+function renderAyahList(num){
+  const scroll=document.getElementById('ayah-scroll');
+  const arD=QAR[String(num)], enD=QEN[String(num)], urD=QUR[String(num)];
+  if(!arD){scroll.innerHTML='<div class="loading-spin"><div class="spinner"></div><span>Loading...</span></div>';return;}
+  const name=EN_NAMES[num], arName=AR_NAMES[num];
+  let html=`<div class="surah-title-card">
+    <div class="stc-ar">${arName}</div>
+    <div class="stc-en">${name} · ${COUNTS[num]} ayaat · ${REV[num]==='M'?'Meccan':'Medinan'}</div>
+    ${num!==9?'<div class="stc-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>':''}
+    <div class="stc-actions">
+      <button class="gold-btn" onclick="openSurahReader(${num},0)">📖 Immersive Read</button>
+      <button class="outline-btn" onclick="playFullSurah(${num})">▶ Play Surah</button>
+      <button class="outline-btn" onclick="stopAudio()">⏹</button>
+    </div>
+  </div>`;
 
-function populateSelects() {
-  const opts = S.surahs.map(s =>
-    `<option value="${s.number}">${s.number}. ${s.englishName} · ${s.name}</option>`).join('');
-  ['read-surah-select','mem-surah-select'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = `<option value="">Select a surah...</option>${opts}`;
+  arD.ayahs.forEach((ar,i)=>{
+    const ur=(urD&&urD[i])||'';
+    const en=(enD&&enD[i])||'';
+    const key=num+':'+(i+1);
+    const bm=!!S.bookmarks[key];
+    html+=`<div class="ayah-block" id="ab-${i}" onclick="toggleAyahExpand(${i})">
+      <div class="ayah-block-top">
+        <div class="ab-num">${i+1}</div>
+        <button class="ab-bmark${bm?' on':''}" onclick="event.stopPropagation();bmarkAyah(${num},${i+1},'${ar.replace(/'/g,"\\'")}','${ur.replace(/'/g,"\\'")}')">
+          ${bm?'🔖':'🏷'}
+        </button>
+      </div>
+      <div class="ab-arabic">${S.tajweed?applyTajweed(ar):esc(ar)}</div>
+      ${S.readMode!=='ar'&&S.readMode!=='en'&&ur?`<div class="ab-urdu">${esc(ur)}</div>`:''}
+      ${S.readMode==='en'&&en?`<div class="ab-english">${esc(en)}</div>`:''}
+    </div>`;
+  });
+  scroll.innerHTML=html;
+  // Track reading
+  S.ayaatRead+=arD.ayahs.length;
+  localStorage.setItem('nq_ayaat',S.ayaatRead);
+}
+
+function toggleAyahExpand(i){
+  const el=document.getElementById('ab-'+i);
+  if(!el) return;
+  const isExp=el.classList.toggle('expanded');
+  const num=S.lastSurah;
+  const arD=QAR[String(num)], enD=QEN[String(num)], urD=QUR[String(num)];
+  if(!arD) return;
+  const ar=arD.ayahs[i]||'', ur=(urD&&urD[i])||'', en=(enD&&enD[i])||'';
+  if(isExp){
+    const actDiv=document.createElement('div');
+    actDiv.className='ab-actions';
+    actDiv.id='ab-act-'+i;
+    actDiv.innerHTML=`
+      <button class="gold-btn" onclick="event.stopPropagation();playAyah(${num},${i+1})">▶ Play</button>
+      <button class="outline-btn" onclick="event.stopPropagation();openSurahReader(${num},${i})">📖 Read</button>
+      <button class="outline-btn" onclick="event.stopPropagation();addToJournal('${ar.replace(/'/g,"\\'")}','${EN_NAMES[num]} ${num}:${i+1}')">📓</button>
+    `;
+    el.appendChild(actDiv);
+    if(S.readMode==='wbw') renderWBW(el, ar, ur);
+  } else {
+    document.getElementById('ab-act-'+i)?.remove();
+    el.querySelector('.wbw-chips')?.remove();
+  }
+}
+
+function renderWBW(container, ar, ur){
+  const words=ar.split(' ');
+  const div=document.createElement('div');
+  div.className='wbw-chips';
+  div.innerHTML=words.map(w=>`<div class="wbw-chip"><span class="wbw-ar">${esc(w)}</span></div>`).join('');
+  container.appendChild(div);
+}
+
+function bmarkAyah(surahNum, ayahNum, ar, ur){
+  const key=surahNum+':'+ayahNum;
+  if(S.bookmarks[key]){ delete S.bookmarks[key]; showToast('Bookmark removed'); }
+  else { S.bookmarks[key]={ar,ur,ref:EN_NAMES[surahNum]+' '+surahNum+':'+ayahNum,surahNum,ayahNum}; showToast('🔖 Bookmarked!'); addXP(5,'Bookmark'); }
+  localStorage.setItem('nq_bm',JSON.stringify(S.bookmarks));
+  // Update icon
+  const btn=document.querySelector(`#ab-${ayahNum-1} .ab-bmark`);
+  if(btn){ btn.classList.toggle('on',!!S.bookmarks[key]); btn.textContent=S.bookmarks[key]?'🔖':'🏷'; }
+}
+
+// ══ FULLSCREEN READER ═════════════════════════════════════════════════════════
+const RD={surahNum:1,ayahs:[],urdu:[],english:[],idx:0,audio:null,timer:null,elapsed:0,target:300,active:false,challengeKey:null,ctxCache:{}};
+
+async function openSurahReader(surahNum, startIdx=0, challengeKey=null){
+  await loadQ();
+  const num=parseInt(surahNum)||1;
+  RD.surahNum=num;
+  RD.ayahs  =(QAR[String(num)]?.ayahs)||[];
+  RD.urdu   =QUR[String(num)]||[];
+  RD.english=QEN[String(num)]||[];
+  RD.idx    =Math.max(0,Math.min(startIdx,RD.ayahs.length-1));
+  RD.challengeKey=challengeKey;
+  RD.ctxCache={};
+  S.lastSurah=num; localStorage.setItem('nq_last_surah',num);
+  document.getElementById('reader-overlay').classList.add('open');
+  rdRender();
+  rdStartTimer();
+  rdSetupSwipe();
+  document.getElementById('rd-swipe-hint').style.opacity='1';
+  setTimeout(()=>{ const h=document.getElementById('rd-swipe-hint'); if(h) h.style.opacity='0'; },3000);
+}
+
+function closeReader(){
+  document.getElementById('reader-overlay').classList.remove('open');
+  rdStopAudio(); rdStopTimer();
+  S.ayaatRead+=RD.idx+1; localStorage.setItem('nq_ayaat',S.ayaatRead);
+  S.lastAyah=RD.idx; localStorage.setItem('nq_last_ayah',RD.idx);
+  if(RD.challengeKey) markDone(RD.challengeKey);
+  updateHomeStats();
+}
+
+function rdRender(){
+  const ar=RD.ayahs[RD.idx]||'';
+  const ur=RD.urdu[RD.idx]||'';
+  const en=RD.english[RD.idx]||'';
+  const total=RD.ayahs.length;
+  const pct=Math.round(((RD.idx+1)/total)*100);
+  const key=RD.surahNum+':'+(RD.idx+1);
+  const bm=!!S.bookmarks[key];
+
+  document.getElementById('rd-label').textContent=`${EN_NAMES[RD.surahNum]} · ${RD.idx+1}/${total}`;
+  document.getElementById('rd-prog').style.width=pct+'%';
+  document.getElementById('rd-num').textContent=RD.idx+1;
+  document.getElementById('rd-arabic').innerHTML=S.tajweed?applyTajweed(ar):esc(ar);
+  document.getElementById('rd-urdu').textContent=S.transPref==='ur'?ur:en;
+  document.getElementById('rd-english').textContent=S.transPref==='ur'&&en?en:'';
+  document.getElementById('rd-english').style.display=S.transPref==='ur'&&en?'block':'none';
+  document.getElementById('rd-wbw').innerHTML='';
+  document.getElementById('rd-bookmark-btn').textContent=bm?'🔖':'🏷';
+  document.getElementById('rd-prev').disabled=RD.idx===0;
+  document.getElementById('rd-next').disabled=RD.idx===total-1;
+}
+
+function readerNav(dir){
+  const newIdx=RD.idx+dir;
+  if(newIdx<0||newIdx>=RD.ayahs.length) return;
+  const card=document.getElementById('rd-card');
+  if(card){
+    card.style.transition='transform .2s ease,opacity .2s';
+    card.style.transform=dir<0?'translateX(40px)':'translateX(-40px)';
+    card.style.opacity='0';
+    setTimeout(()=>{
+      RD.idx=newIdx;
+      card.style.transition='none';
+      card.style.transform=dir<0?'translateX(-40px)':'translateX(40px)';
+      card.style.opacity='0';
+      rdRender();
+      requestAnimationFrame(()=>{
+        card.style.transition='transform .2s ease,opacity .2s';
+        card.style.transform='translateX(0)';
+        card.style.opacity='1';
+      });
+    },200);
+  } else { RD.idx=newIdx; rdRender(); }
+}
+
+function rdSetupSwipe(){
+  const area=document.getElementById('rd-card-area');
+  if(!area||area._swipe) return;
+  area._swipe=true;
+  let sx=0,sy=0;
+  area.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});
+  area.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-sx;
+    const dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){ dx<0?readerNav(1):readerNav(-1); }
+  },{passive:true});
+  document.addEventListener('keydown',e=>{
+    if(document.getElementById('reader-overlay').classList.contains('open')){
+      if(e.key==='ArrowLeft') readerNav(1);
+      if(e.key==='ArrowRight') readerNav(-1);
+      if(e.key==='Escape') closeReader();
+    }
   });
 }
 
-// ─── HOME ─────────────────────────────────────────────────────────────────────
-function renderHome() {
-  const knownCount = VOCAB_DATA.filter(v => S.userWords[v.a]===true).length;
-  document.getElementById('h-read').textContent   = S.readCount;
-  document.getElementById('h-words').textContent  = knownCount;
-  document.getElementById('h-mem').textContent    = S.memCount;
-  document.getElementById('h-streak').textContent = S.streak;
-
-  const ta = TODAY_AYAHS[new Date().getDate() % TODAY_AYAHS.length];
-  document.getElementById('today-card').innerHTML = `
-    <div class="today-lbl">${ta.ref}</div>
-    <div class="today-ar">${ta.ar}</div>
-    <div class="today-ur">${ta.ur}</div>
-    <div style="display:flex;justify-content:flex-end;margin-top:.6rem;gap:6px;flex-wrap:wrap">
-      <button class="audio-btn play-btn" onclick="playTodayAyah(${ta.s},${ta.a},this)">▶ Play</button>
-      <button class="btn btn-outline" style="font-size:11px" onclick="addToJournal('${ta.ar.replace(/'/g,"\\'")}','${ta.ref}')">📓 Save</button>
-      <button class="btn btn-outline" style="font-size:11px" onclick="openSurah(${ta.s})">Open surah →</button>
-    </div>`;
-
-  document.getElementById('plan-list').innerHTML = PLAN_STEPS.map((s,i) => `
-    <div class="plan-item" onclick="openSurah(${s.num})">
-      <div class="plan-dot ${s.done?'done':'todo'}">${s.done?'✓':i+1}</div>
-      <div style="flex:1">
-        <div class="plan-text" style="color:${s.done?'var(--green2)':'var(--ink)'}">${s.text}</div>
-        <div class="plan-sub">${s.sub}</div>
-      </div>
-      <div class="plan-arrow">→</div>
-    </div>`).join('');
-  renderNotifBtn();
-}
-
-function playTodayAyah(s,a,btn) {
-  stopAudio();
-  const audio = new Audio(ayahAudioUrl(s,a));
-  S.currentAudio = audio;
-  btn.textContent='⏸ Playing…'; btn.classList.add('playing');
-  audio.onerror = () => {
-    const fb = new Audio(ayahAudioUrlFallback(s,a));
-    S.currentAudio=fb; fb.play().catch(()=>{});
-    fb.onended=()=>{btn.textContent='▶ Play';btn.classList.remove('playing');S.currentAudio=null;};
+function readerPlay(){
+  const btn=document.getElementById('rd-play');
+  if(RD.audio&&!RD.audio.paused){
+    RD.audio.pause(); RD.audio=null;
+    btn.textContent='▶'; btn.classList.remove('playing'); return;
+  }
+  const s=String(RD.surahNum).padStart(3,'0');
+  const a=String(RD.idx+1).padStart(3,'0');
+  RD.audio=new Audio(AUDIO+s+'/'+a+'.mp3');
+  btn.textContent='⏸'; btn.classList.add('playing');
+  RD.audio.play().catch(()=>{btn.textContent='▶';btn.classList.remove('playing');});
+  RD.audio.onended=()=>{
+    btn.textContent='▶'; btn.classList.remove('playing'); RD.audio=null;
+    setTimeout(()=>readerNav(1), 500);
   };
-  audio.play().catch(()=>{btn.textContent='▶ Play';btn.classList.remove('playing');});
-  audio.onended=()=>{btn.textContent='▶ Play';btn.classList.remove('playing');S.currentAudio=null;};
 }
 
-// ─── BROWSE ───────────────────────────────────────────────────────────────────
-function renderSurahBrowser(list) {
-  const el = document.getElementById('surah-browser');
-  if (!list.length) { el.innerHTML='<div class="empty-state">No surahs found.</div>'; return; }
-  el.innerHTML = list.map(s => {
-    const badge = S.badges[s.number];
-    const badgeHTML = badge ? `<span class="surah-badge ${badge==='memorized'?'badge-mem':'badge-studied'}">${badge==='memorized'?'حفظ':'مطالعہ'}</span>` : '';
-    return `<div class="surah-item">
-      <div class="surah-num" onclick="openSurah(${s.number})">${s.number}</div>
-      <div style="flex:1;cursor:pointer" onclick="openSurah(${s.number})">
-        <div class="surah-name-en">${s.englishName} <span style="font-size:11px;color:var(--ink3)">· ${s.englishNameTranslation}</span>${badgeHTML}</div>
-        <div class="surah-meta">${s.numberOfAyahs} ayaat · ${s.revelationType}</div>
-      </div>
-      <div class="surah-ar" onclick="openSurah(${s.number})" style="cursor:pointer">${s.name}</div>
-      <button class="open-reader-btn" onclick="openReader(${s.number})">📖 Read</button>
-    </div>`;
-  }).join('');
+function rdStopAudio(){ if(RD.audio){RD.audio.pause();RD.audio=null;} }
+
+function rdStartTimer(){
+  RD.elapsed=0; RD.active=true;
+  clearInterval(RD.timer);
+  RD.timer=setInterval(()=>{
+    if(!RD.active) return;
+    RD.elapsed++;
+    const target=300; // 5 min
+    const pct=Math.min(100,RD.elapsed/target*100);
+    const pts=Math.floor(RD.elapsed*(150/target));
+    const fill=document.getElementById('rcs-fill');
+    const time=document.getElementById('rcs-time');
+    const ptEl=document.getElementById('rcs-pts');
+    if(fill) fill.style.width=pct+'%';
+    if(time) time.textContent=fmt(RD.elapsed);
+    if(ptEl) ptEl.textContent='+'+pts;
+    if(RD.elapsed===target){ clearInterval(RD.timer); addXP(150,'Reading Session'); showToast('🌟 5-min challenge complete!'); }
+  },1000);
 }
 
-function filterSurahs() {
-  const q = document.getElementById('surah-search').value.toLowerCase();
-  renderSurahBrowser(S.surahs.filter(s =>
-    s.englishName.toLowerCase().includes(q) || (s.name||'').includes(q) ||
-    (s.englishNameTranslation||'').toLowerCase().includes(q) || String(s.number).includes(q)
-  ));
+function rdStopTimer(){ RD.active=false; clearInterval(RD.timer); }
+
+function readerToggleBookmark(){
+  const ar=RD.ayahs[RD.idx]||'';
+  const ur=RD.urdu[RD.idx]||'';
+  const key=RD.surahNum+':'+(RD.idx+1);
+  const ref=EN_NAMES[RD.surahNum]+' '+RD.surahNum+':'+(RD.idx+1);
+  bmarkAyah(RD.surahNum,RD.idx+1,ar,ur);
+  document.getElementById('rd-bookmark-btn').textContent=S.bookmarks[key]?'🔖':'🏷';
 }
 
-// ─── READ — uses self-hosted data + alquran.cloud Urdu with fallback ──────────
-async function openSurah(num) {
-  if (!num) return;
-  showPage('read');
-  stopAudio();
-  document.getElementById('read-surah-select').value = num;
-  S.currentSurahNum = parseInt(num);
-  S.expandedAyah    = null;
-  S.currentWordByWord = [];
-
-  const wrap = document.getElementById('ayah-list-wrap');
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading surah...</span></div>';
-
+async function readerShowContext(){
+  const ar=RD.ayahs[RD.idx]||'';
+  const ur=RD.urdu[RD.idx]||'';
+  const en=RD.english[RD.idx]||'';
+  const ref=`${EN_NAMES[RD.surahNum]} ${RD.surahNum}:${RD.idx+1}`;
+  const key=`${RD.surahNum}:${RD.idx+1}`;
+  const overlay=document.getElementById('ctx-overlay');
+  const body=document.getElementById('ctx-body');
+  overlay.classList.add('open');
+  if(RD.ctxCache[key]){ body.innerHTML=RD.ctxCache[key]; return; }
+  body.innerHTML='<div class="loading-spin"><div class="spinner"></div><span>Loading tafseer...</span></div>';
   try {
-    // Load from bundled JSON files — no external API, works with VPN
-    await loadQuranData();
-    const key = String(num);
-    const arD = QURAN_AR[key];
-    const enD = QURAN_EN[key];
-    const urD = QURAN_UR[key];
-    if (!arD) throw new Error('Surah ' + num + ' not found in bundled data');
-
-    const surahInfo = S.surahs.find(s => s.number === parseInt(num)) || {};
-
-    S.currentAyaat = arD.ayahs.map((text, i) => ({
-      text, numberInSurah: i + 1, number: num * 1000 + i + 1,
-    }));
-    S.currentEnglish = (enD || []).map((text, i) => ({ text, numberInSurah: i+1 }));
-    S.currentUrdu    = (urD || enD || []).map((text, i) => ({ text, numberInSurah: i+1 }));
-    S.currentSurahInfo = {
-      number: parseInt(num),
-      name: surahInfo.name || arD.name || '',
-      englishName: surahInfo.englishName || '',
-      englishNameTranslation: surahInfo.englishNameTranslation || '',
-      numberOfAyahs: S.currentAyaat.length,
-      revelationType: surahInfo.revelationType || '',
-    };
-    S.currentIndoPak = S.currentAyaat;
-    fetchWordByWord(num);
-    S.readCount += S.currentAyaat.length;
-    localStorage.setItem('nq_read', S.readCount);
-    renderAyahs();
-
-  } catch(e) {
-    console.error('openSurah failed:', e);
-    wrap.innerHTML = `<div class="empty-state">
-      <div style="font-size:2rem;margin-bottom:.5rem">⚠️</div>
-      <strong>Could not load surah.</strong><br><br>
-      <span style="font-size:12px;color:var(--ink3)">Check your internet connection.</span><br><br>
-      <button class="btn" onclick="openSurah(${num})">↻ Retry</button>
-    </div>`;
-  }
-}
-
-async function fetchWordByWord(surahNum) {
-  try {
-    const res  = await fetchWithRetry(`https://api.qurancdn.com/api/qdc/verses/by_chapter/${surahNum}?words=true&word_fields=text_uthmani,text_indopak,transliteration_en&per_page=300&translations=234`, 2, 8000);
-    const data = await res.json();
-    S.currentWordByWord = data.verses || [];
-  } catch { S.currentWordByWord = []; }
-}
-
-function arabicText(a, i) {
-  const raw = a.text;
-  return S.tajweedOn ? applyTajweed(raw) : escHtml(raw);
-}
-
-function renderAyahs() {
-  const wrap = document.getElementById('ayah-list-wrap');
-  const info = S.currentSurahInfo;
-  if (!info) return;
-
-  const badge = S.badges[info.number];
-  const badgeHTML = badge ? `<span class="surah-badge ${badge==='memorized'?'badge-mem':'badge-studied'}" style="margin-left:6px">${badge==='memorized'?'✓ Memorized':'✓ Studied'}</span>` : '';
-
-  let html = `<div class="surah-header">
-    <div class="surah-header-ar">${info.name}</div>
-    <div class="surah-header-en">${info.englishName} · ${info.englishNameTranslation} · ${info.numberOfAyahs} ayaat${badgeHTML}</div>
-    ${info.number!==9?'<div class="surah-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>':''}
-    <div style="margin-top:.7rem;display:flex;justify-content:center;gap:6px;flex-wrap:wrap">
-      <button class="btn btn-gold" style="font-size:11px" onclick="playSurah(${info.number},S.currentAyaat)">▶ Play surah</button>
-      <button class="btn btn-outline" style="font-size:11px" onclick="stopAudio()">⏹ Stop</button>
-      <button class="btn btn-outline" style="font-size:11px" onclick="markSurah(${info.number},'studied')">📗 Studied</button>
-      <button class="btn btn-outline" style="font-size:11px" onclick="markSurah(${info.number},'memorized')">🏅 Memorized</button>
-    </div>
-    ${S.tajweedOn ? tajweedLegendHTML() : ''}
-  </div>`;
-
-  html += S.currentAyaat.map((a, i) => {
-    const isExp = S.expandedAyah === i;
-    const ur    = S.currentUrdu[i]?.text   || '';
-    const en    = S.currentEnglish[i]?.text || '';
-    const key   = `${info.number}:${a.numberInSurah}`;
-    const isBookmarked = !!S.bookmarks[key];
-    const ref   = `${info.englishName} ${info.number}:${a.numberInSurah}`;
-    const arRaw = a.text;
-
-    let wbwHTML = '';
-    if (isExp && S.mode === 'wordbyword') {
-      const verse = S.currentWordByWord.find(v => parseInt(v.verse_key.split(':')[1]) === a.numberInSurah);
-      if (verse?.words) {
-        const chips = verse.words.filter(w => w.char_type_name !== 'end').map(w => {
-          const arab    = w.text_indopak || w.text_uthmani || '';
-          const translit = w.transliteration?.text || '';
-          const meaning  = w.translation?.text || '';
-          return `<div class="word-chip"><span class="wc-arab">${arab}</span><span class="wc-translit">${translit}</span>${meaning?`<span class="wc-meaning">${meaning}</span>`:''}</div>`;
-        }).join('');
-        wbwHTML = `<div class="word-chips-wrap">${chips}</div>`;
-      } else {
-        wbwHTML = `<div style="font-size:12px;color:var(--ink3);margin-top:.5rem;text-align:center">⏳ Loading word data…</div>`;
-      }
-    }
-
-    return `<div class="ayah-card${isExp?' selected':''}" id="ayah-${i}" onclick="toggleAyah(${i})">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px">
-        <div class="ayah-num">${a.numberInSurah}</div>
-        <button class="bookmark-btn${isBookmarked?' active':''}" onclick="event.stopPropagation();toggleBookmark(${info.number},${a.numberInSurah},'${arRaw.replace(/'/g,"\\'")}','${ur.replace(/'/g,"\\'")}','${ref}')">${isBookmarked?'🔖':'🏷'}</button>
-      </div>
-      <div class="ayah-ar">${arabicText(a,i)}</div>
-      ${S.mode==='both'    &&ur?`<div class="ayah-ur">${ur}</div>`:''}
-      ${S.mode==='ar_en'   &&en?`<div class="ayah-en">${en}</div>`:''}
-      ${S.mode==='indopak' &&ur?`<div class="ayah-ur">${ur}</div>`:''}
-      ${wbwHTML}
-      ${isExp?`<div class="ayah-actions">
-        <button class="btn play-btn" onclick="event.stopPropagation();playAyah(${info.number},${a.numberInSurah},this)">▶ Play</button>
-        <button class="btn btn-outline" onclick="event.stopPropagation();addToJournal('${arRaw.replace(/'/g,"\\'")}','${ref}')">📓 Journal</button>
-        ${S.mode!=='wordbyword'?`<button class="btn btn-outline" onclick="event.stopPropagation();setModeExpand('wordbyword',${i})">📚 Word×Word</button>`:''}
-      </div>`:''}
-    </div>`;
-  }).join('');
-
-  wrap.innerHTML = html;
-
-  // Add fullscreen reader button
-  const header = document.querySelector('.surah-header');
-  if (header && S.currentSurahNum) {
-    const btn = document.createElement('button');
-    btn.className = 'open-reader-btn';
-    btn.style.cssText = 'margin:.6rem auto 0;display:block';
-    btn.innerHTML = '📖 Open Fullscreen Reader';
-    btn.onclick = () => openReader(S.currentSurahNum, S.expandedAyah || 0);
-    header.appendChild(btn);
-  }
-}
-
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function setModeExpand(mode, idx) {
-  S.mode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
-  S.expandedAyah = idx;
-  renderAyahs();
-}
-function toggleAyah(i) { S.expandedAyah = S.expandedAyah===i?null:i; renderAyahs(); }
-function setMode(m, btn) {
-  S.mode = m;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  if (S.currentAyaat.length) renderAyahs();
-}
-function toggleTajweed() {
-  S.tajweedOn = !S.tajweedOn;
-  localStorage.setItem('nq_tajweed', JSON.stringify(S.tajweedOn));
-  const btn = document.getElementById('tajweed-btn');
-  if (btn) { btn.textContent = S.tajweedOn?'🎨 Tajweed ON':'🎨 Tajweed OFF'; btn.classList.toggle('active',S.tajweedOn); }
-  if (S.currentAyaat.length) renderAyahs();
-}
-
-// ─── BOOKMARKS ────────────────────────────────────────────────────────────────
-function toggleBookmark(surahNum, ayahNum, ar, ur, ref) {
-  const key = `${surahNum}:${ayahNum}`;
-  if (S.bookmarks[key]) { delete S.bookmarks[key]; showToast('Bookmark removed'); }
-  else { S.bookmarks[key]={ar,ur,ref,surahNum,ayahNum}; showToast('🔖 Bookmarked!'); }
-  localStorage.setItem('nq_bookmarks', JSON.stringify(S.bookmarks));
-  renderAyahs();
-  if (document.getElementById('page-bookmarks')?.classList.contains('active')) renderBookmarks();
-}
-
-function renderBookmarks() {
-  const el   = document.getElementById('bookmarks-list');
-  const keys = Object.keys(S.bookmarks);
-  if (!keys.length) {
-    el.innerHTML=`<div class="empty-state"><div style="font-size:2rem;margin-bottom:.5rem">🔖</div>No bookmarks yet.<br>Tap 🏷 on any ayah while reading.</div>`; return;
-  }
-  el.innerHTML = keys.map(k => {
-    const b = S.bookmarks[k];
-    return `<div class="journal-entry">
-      <div class="je-header">
-        <div class="je-date">${b.ref}</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-outline" style="font-size:10px;padding:3px 7px" onclick="openSurah(${b.surahNum})">Open →</button>
-          <button class="je-delete" onclick="toggleBookmark(${b.surahNum},${b.ayahNum},'','','${b.ref}')">✕</button>
-        </div>
-      </div>
-      <div class="je-ar">${b.ar}</div>
-      ${b.ur?`<div class="je-note" style="font-family:'Noto Nastaliq Urdu',serif;font-size:.85rem;direction:rtl;text-align:right">${b.ur}</div>`:''}
-      <button class="audio-btn play-btn" style="margin-top:.4rem" onclick="playAyah(${b.surahNum},${b.ayahNum},this)">▶ Play</button>
-    </div>`;
-  }).join('');
-}
-
-// ─── BADGES / PROGRESS ────────────────────────────────────────────────────────
-function markSurah(num, status) {
-  if (S.badges[num]===status) { delete S.badges[num]; showToast('Badge removed'); }
-  else { S.badges[num]=status; showToast(status==='memorized'?'🏅 Marked memorized! Mashallah!':'📗 Marked as studied!'); }
-  localStorage.setItem('nq_badges', JSON.stringify(S.badges));
-  renderAyahs();
-  renderProgress();
-}
-
-function renderProgress() {
-  const el = document.getElementById('progress-content');
-  if (!el) return;
-  const studied   = Object.values(S.badges).filter(v=>v==='studied').length;
-  const memorized = Object.values(S.badges).filter(v=>v==='memorized').length;
-  const pct = Math.round((studied+memorized)/114*100);
-  el.innerHTML = `
-    <div class="mem-card" style="margin-bottom:10px">
-      <div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:.8rem">Overall Quran Progress</div>
-      <div style="display:flex;gap:1rem;margin-bottom:.8rem;flex-wrap:wrap">
-        <div class="stat-pill" style="background:var(--green-lt)"><div class="stat-num" style="color:var(--green2)">${memorized}</div><div class="stat-lbl" style="color:var(--green2)">Memorized</div></div>
-        <div class="stat-pill" style="background:#e8f5e9"><div class="stat-num" style="color:#2e7d32">${studied}</div><div class="stat-lbl" style="color:#2e7d32">Studied</div></div>
-        <div class="stat-pill" style="background:var(--cream2)"><div class="stat-num">${114-studied-memorized}</div><div class="stat-lbl">Remaining</div></div>
-      </div>
-      <div style="font-size:12px;color:var(--ink3);margin-bottom:.4rem">${pct}% of Quran covered</div>
-      <div class="prog-bar-wrap" style="border-radius:8px;height:10px"><div class="prog-bar" style="width:${pct}%"></div></div>
-    </div>
-    ${Object.keys(S.badges).length===0?'<div class="empty-state" style="padding:1rem">No surahs marked yet.</div>':
-      Object.entries(S.badges).sort((a,b)=>a[0]-b[0]).map(([num,status])=>{
-        const s=S.surahs.find(x=>x.number==num);
-        const name=s?s.englishName:`Surah ${num}`;
-        return `<div class="surah-item" onclick="openSurah(${num})" style="margin-bottom:6px;cursor:pointer">
-          <div class="surah-num">${num}</div>
-          <div style="flex:1"><div class="surah-name-en">${name}</div></div>
-          <span class="surah-badge ${status==='memorized'?'badge-mem':'badge-studied'}">${status==='memorized'?'🏅 Memorized':'📗 Studied'}</span>
-        </div>`;
-      }).join('')
-    }`;
-}
-
-// ─── SEARCH ───────────────────────────────────────────────────────────────────
-async function doSearch() {
-  const q = document.getElementById('search-input').value.trim();
-  if (!q) return;
-  const el = document.getElementById('search-results');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div><span>Searching...</span></div>';
-  try {
-    const urduId = URDU_EDITIONS[S.urduEdition].id;
-    const [arRes, urRes] = await Promise.all([
-      fetchWithRetry(`https://api.alquran.cloud/v1/search/${encodeURIComponent(q)}/all/ar`, 2, 8000),
-      fetchWithRetry(`https://api.alquran.cloud/v1/search/${encodeURIComponent(q)}/all/${urduId}`, 2, 8000),
-    ]);
-    const [arD, urD] = await Promise.all([arRes.json(), urRes.json()]);
-    const map = {};
-    (arD.data?.matches||[]).forEach(m => { const k=`${m.surah.number}:${m.numberInSurah}`; map[k]={ar:m.text,ur:'',ref:`${m.surah.englishName} ${m.surah.number}:${m.numberInSurah}`,surahNum:m.surah.number,ayahNum:m.numberInSurah}; });
-    (urD.data?.matches||[]).forEach(m => { const k=`${m.surah.number}:${m.numberInSurah}`; if(map[k]) map[k].ur=m.text; else map[k]={ar:'',ur:m.text,ref:`${m.surah.englishName} ${m.surah.number}:${m.numberInSurah}`,surahNum:m.surah.number,ayahNum:m.numberInSurah}; });
-    const results = Object.values(map);
-    const countEl = document.getElementById('search-count');
-    if (countEl) countEl.textContent = results.length ? `${results.length} results` : '';
-    if (!results.length) { el.innerHTML=`<div class="empty-state">No results for "<strong>${q}</strong>"</div>`; return; }
-    el.innerHTML = results.slice(0,50).map(r=>`
-      <div class="journal-entry" style="cursor:pointer" onclick="openSurah(${r.surahNum})">
-        <div class="je-header"><div class="je-date">${r.ref}</div>
-          <button class="bookmark-btn${S.bookmarks[r.surahNum+':'+r.ayahNum]?' active':''}" onclick="event.stopPropagation();toggleBookmark(${r.surahNum},${r.ayahNum},'${(r.ar||'').replace(/'/g,"\\'")}','${(r.ur||'').replace(/'/g,"\\'")}','${r.ref}')">🏷</button>
-        </div>
-        ${r.ar?`<div class="je-ar">${highlight(r.ar,q)}</div>`:''}
-        ${r.ur?`<div class="je-note" style="font-family:'Noto Nastaliq Urdu',serif;font-size:.85rem;direction:rtl;text-align:right">${highlight(r.ur,q)}</div>`:''}
-        <div style="display:flex;gap:6px;margin-top:.4rem">
-          <button class="audio-btn play-btn" onclick="event.stopPropagation();playAyah(${r.surahNum},${r.ayahNum},this)">▶ Play</button>
-          <button class="btn btn-outline" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();openSurah(${r.surahNum})">Open →</button>
-        </div>
-      </div>`).join('');
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:800,messages:[{role:'user',content:`Brief tafseer for this Quran ayah in JSON only, no markdown:
+{"importance":"1-2 sentences","context":"1-2 sentences on revelation context","explanation":"2-3 sentences on meaning","keyLesson":"max 10 words","arabicTheme":"one Arabic word + meaning"}
+Ayah: ${ar}
+Reference: ${ref}
+English: ${en}`}]})
+    });
+    const d=await res.json();
+    const txt=d.content?.[0]?.text||'';
+    let ctx;
+    try{ctx=JSON.parse(txt.replace(/```json|```/g,'').trim());}
+    catch{ctx={importance:'',context:'',explanation:en||ur,keyLesson:'',arabicTheme:''};}
+    const html=`
+      <div class="ctx-ar">${esc(ar)}</div>
+      <div class="ctx-ur">${esc(ur)}</div>
+      <div class="ctx-ref">${ref}</div>
+      <hr class="ctx-divider">
+      ${ctx.keyLesson?`<div class="ctx-key">✨ ${esc(ctx.keyLesson)}</div>`:''}
+      ${ctx.importance?`<div class="ctx-section"><div class="ctx-section-title">📌 Importance</div><div class="ctx-section-body">${esc(ctx.importance)}</div></div>`:''}
+      ${ctx.context?`<div class="ctx-section"><div class="ctx-section-title">📖 Context — شانِ نزول</div><div class="ctx-section-body">${esc(ctx.context)}</div></div>`:''}
+      ${ctx.explanation?`<div class="ctx-section"><div class="ctx-section-title">💡 Explanation — تفسیر</div><div class="ctx-section-body">${esc(ctx.explanation)}</div></div>`:''}
+      ${ctx.arabicTheme?`<div style="text-align:center;padding:.8rem;background:var(--bg3);border-radius:10px;margin-top:.6rem"><div style="font-family:Amiri,serif;font-size:1.8rem;color:var(--gold)">${ctx.arabicTheme.split(' ')[0]}</div><div style="font-size:11px;color:var(--white5);margin-top:4px">${esc(ctx.arabicTheme)}</div></div>`:''}
+      <div style="display:flex;gap:8px;margin-top:1rem">
+        <button class="gold-btn" onclick="readerPlay();hideContext()">▶ Listen</button>
+        <button class="outline-btn" onclick="addToJournal('${ar.replace(/'/g,"\\'")}','${ref}');hideContext()">📓 Save</button>
+      </div>`;
+    RD.ctxCache[key]=html; body.innerHTML=html;
   } catch {
-    el.innerHTML='<div class="empty-state">⚠️ Search requires internet. Disable VPN and try again.</div>';
+    body.innerHTML=`<div class="ctx-ar">${esc(ar)}</div><div class="ctx-ur">${esc(ur)}</div><div class="ctx-ref">${ref}</div><hr class="ctx-divider"><div class="ctx-section"><div class="ctx-section-title">English</div><div class="ctx-section-body">${esc(en)}</div></div>`;
   }
 }
+function hideContext(){ document.getElementById('ctx-overlay').classList.remove('open'); }
 
-function highlight(text,q) {
-  if(!q||!text) return escHtml(text||'');
-  const safe=escHtml(text), safeQ=escHtml(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  return safe.replace(new RegExp(safeQ,'gi'), m=>`<mark>${m}</mark>`);
+// ══ AUDIO ═════════════════════════════════════════════════════════════════════
+let _audio=null;
+function playAyah(surahNum, ayahNum){
+  if(_audio){ _audio.pause(); _audio=null; }
+  const s=String(surahNum).padStart(3,'0');
+  const a=String(ayahNum).padStart(3,'0');
+  _audio=new Audio(AUDIO+s+'/'+a+'.mp3');
+  _audio.play().catch(()=>{});
 }
-
-// ─── MEMORIZE ────────────────────────────────────────────────────────────────
-async function loadMemorizeSurah() {
-  const num = document.getElementById('mem-surah-select').value;
-  if (!num) return;
-  const el = document.getElementById('mem-content');
-  el.innerHTML='<div class="loading"><div class="spinner"></div><span>Loading...</span></div>';
-  try {
-    await loadQuranData();
-    const key   = String(num);
-    const arD   = QURAN_AR[key];
-    const urD   = QURAN_UR[key];
-    if (!arD) throw new Error('Surah not found');
-    const ayahs = arD.ayahs.map((text,i)=>({text,numberInSurah:i+1}));
-    const urdu  = (urD||[]).map(text=>({text}));
-    S.memState={num,ayaat:ayahs,urdu,idx:0,score:0,revealed:false};
-    renderMemCard();
-  } catch { el.innerHTML='<div class="empty-state">⚠️ Could not load. Check connection.</div>'; }
-}
-
-function renderMemCard() {
-  const ms=S.memState, total=ms.ayaat.length;
-  const prog=total?(ms.idx/total)*100:0;
-  document.getElementById('mem-bar').style.width=prog+'%';
-  document.getElementById('mem-prog-label').textContent=total?`${ms.idx} / ${total} ayaat`:'';
-  const el=document.getElementById('mem-content');
-  if(!total){el.innerHTML='<div class="empty-state">Select a surah above.</div>';return;}
-  if(ms.idx>=total){
-    S.memCount+=total; localStorage.setItem('nq_memc',S.memCount);
-    el.innerHTML=`<div class="mem-card"><div class="mem-complete"><div class="mem-complete-icon">🌟</div><div class="mem-complete-title">Mashallah! Surah complete!</div><div class="mem-complete-score">Score: ${ms.score} / ${total} — ${Math.round(ms.score/total*100)}%</div><button class="btn btn-gold" onclick="S.memState.idx=0;S.memState.score=0;renderMemCard()">Restart</button></div></div>`;
-    return;
+function playFullSurah(surahNum){
+  if(_audio){ _audio.pause(); _audio=null; }
+  const arD=QAR[String(surahNum)];
+  if(!arD) return;
+  let idx=0;
+  function next(){
+    if(idx>=arD.ayahs.length) return;
+    const s=String(surahNum).padStart(3,'0');
+    const a=String(idx+1).padStart(3,'0');
+    _audio=new Audio(AUDIO+s+'/'+a+'.mp3');
+    _audio.play().catch(()=>{});
+    _audio.onended=()=>{idx++;next();};
+    idx++;
   }
-  const a=ms.ayaat[ms.idx], ur=ms.urdu[ms.idx]?.text||'';
-  const words=a.text.split(' ');
-  const bi=[Math.floor(Math.random()*words.length)];
-  if(words.length>4) bi.push((bi[0]+Math.ceil(words.length/2))%words.length);
-  const blanked=words.map((w,i)=>bi.includes(i)?`<span style="background:var(--cream3);color:transparent;border-radius:3px;padding:0 8px">____</span>`:escHtml(w)).join(' ');
-  const answer=bi.map(i=>words[i]).join(' ، ');
-  el.innerHTML=`
-    <div class="mem-card">
-      <div style="font-size:12px;font-weight:500;color:var(--ink2);margin-bottom:.8rem">Ayah ${ms.idx+1} of ${total} — fill in the missing word(s)</div>
-      <div class="mem-ayah-ar">${blanked}</div>
-      ${ur?`<div class="mem-ur">${ur}</div>`:''}
-      ${!ms.revealed?`<input class="fill-input" id="mem-inp" placeholder="Type the missing Arabic word(s)..." onkeydown="if(event.key==='Enter')checkMem('${answer.replace(/'/g,"\\'")}')">
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" onclick="checkMem('${answer.replace(/'/g,"\\'")}')">Check ✓</button><button class="btn btn-outline" onclick="revealMem()">Show</button><button class="btn btn-outline" onclick="nextMem()">Skip →</button></div>`
-      :`<div class="mem-answer-box"><div class="mem-answer-label">Answer:</div><div class="mem-answer-text">${answer}</div></div><button class="btn btn-gold" onclick="nextMem()">Next →</button>`}
-    </div>
-    <div class="mem-card mem-card-alt">
-      <div style="font-size:11px;color:var(--ink3);font-weight:500;margin-bottom:.5rem">📖 Full ayah</div>
-      <div class="mem-ayah-full">${S.tajweedOn?applyTajweed(a.text):escHtml(a.text)}</div>
-      <button class="audio-btn play-btn" style="margin-top:.6rem" onclick="playAyah(${parseInt(ms.num)},${a.numberInSurah},this)">▶ Play</button>
+  next();
+}
+function stopAudio(){ if(_audio){_audio.pause();_audio=null;} rdStopAudio(); }
+
+// ══ DUAS ══════════════════════════════════════════════════════════════════════
+let _duaCat='morning';
+function renderDuas(){
+  const cats=Object.keys(DUAS);
+  const labels={morning:'🌅 Morning',evening:'🌙 Evening',sleep:'😴 Sleep',salah:'🕌 Salah',travel:'✈️ Travel'};
+  document.getElementById('dua-tabs').innerHTML=cats.map(c=>`<button class="dua-tab${c===_duaCat?' active':''}" onclick="switchDuaCat('${c}')">${labels[c]||c}</button>`).join('');
+  const list=DUAS[_duaCat]||[];
+  document.getElementById('dua-list').innerHTML=list.map((d,i)=>`
+    <div class="dua-card">
+      <div class="dua-title">${d.title}</div>
+      <div class="dua-arabic">${esc(d.arabic)}</div>
+      <div class="dua-urdu">${esc(d.urdu)}</div>
+      <div class="dua-source">Source: ${d.source}</div>
+    </div>`).join('');
+  // Mark first dua badge
+  if(!S.done['first_dua']){ markDone('first_dua'); addXP(10,'First Dua'); }
+}
+function switchDuaCat(cat){ _duaCat=cat; renderDuas(); }
+
+// ══ ME ════════════════════════════════════════════════════════════════════════
+function renderMe(){
+  const lvl=calcLevel();
+  const curLvlXp=LEVELS[lvl-1]||0;
+  const nxtLvlXp=LEVELS[lvl]||LEVELS[LEVELS.length-1];
+  const pct=Math.min(100,Math.round((S.totalXp-curLvlXp)/(nxtLvlXp-curLvlXp)*100));
+  document.getElementById('me-level').textContent=`Level ${lvl} · ${LEVEL_NAMES[lvl-1]||''}`;
+  document.getElementById('me-xp-fill').style.width=pct+'%';
+  document.getElementById('me-xp-text').textContent=`${S.totalXp.toLocaleString()} / ${nxtLvlXp.toLocaleString()} XP`;
+  document.getElementById('ms-streak').textContent=S.streak;
+  document.getElementById('ms-total-xp').textContent=S.totalXp.toLocaleString();
+  document.getElementById('ms-ayaat').textContent=S.ayaatRead;
+  document.getElementById('ms-challenges').textContent=S.challenges;
+  // Badges
+  document.getElementById('badges-grid').innerHTML=BADGES.map(b=>{
+    const earned=b.check();
+    return`<div class="badge-item${earned?' earned':''}">
+      <div class="badge-icon">${b.icon}</div>
+      <div class="badge-lbl">${b.lbl}</div>
     </div>`;
-}
-function checkMem(a){S.memState.score++;S.memState.revealed=true;renderMemCard();}
-function revealMem(){S.memState.revealed=true;renderMemCard();}
-function nextMem(){S.memState.idx++;S.memState.revealed=false;renderMemCard();}
-
-// ─── VOCAB ────────────────────────────────────────────────────────────────────
-function renderVocab() {
-  const cats=['all',...new Set(VOCAB_DATA.map(v=>v.cat))];
-  document.getElementById('vocab-filters').innerHTML=cats.map(c=>`<button class="filter-btn${S.vocabFilter===c?' active':''}" onclick="S.vocabFilter='${c}';renderVocab()">${c}</button>`).join('');
-  const list=S.vocabFilter==='all'?VOCAB_DATA:VOCAB_DATA.filter(v=>v.cat===S.vocabFilter);
-  document.getElementById('vocab-list').innerHTML=list.map(v=>{
-    const known=S.userWords[v.a]===true;
-    return `<div class="vocab-card" onclick="toggleWord('${v.a}')"><div class="vc-ar">${v.a}</div><div class="vc-body"><span class="vc-ur">${v.u}</span><div class="vc-meta">Appears ${v.count.toLocaleString()}× · ${v.fact}</div></div><span class="vc-badge ${known?'badge-known':'badge-learning'}">${known?'✓ Known':'Learning'}</span></div>`;
   }).join('');
-}
-function toggleWord(ar){S.userWords[ar]=!S.userWords[ar];localStorage.setItem('nq_words',JSON.stringify(S.userWords));renderVocab();renderHome();}
-
-// ─── JOURNAL ──────────────────────────────────────────────────────────────────
-function saveJournal(){
-  const ref=document.getElementById('j-ref').value.trim(), ar=document.getElementById('j-arabic').value.trim(), note=document.getElementById('j-note').value.trim();
-  if(!note&&!ar)return;
-  S.journal.unshift({ref,ar,note,date:new Date().toLocaleDateString('en-PK',{day:'numeric',month:'long',year:'numeric'})});
-  localStorage.setItem('nq_journal',JSON.stringify(S.journal));
-  document.getElementById('j-ref').value=''; document.getElementById('j-arabic').value=''; document.getElementById('j-note').value='';
-  renderJournal();
-}
-function addToJournal(ar,ref){showPage('journal');setTimeout(()=>{document.getElementById('j-arabic').value=ar;document.getElementById('j-ref').value=ref;document.getElementById('j-note').focus();},100);}
-function deleteJournalEntry(i){S.journal.splice(i,1);localStorage.setItem('nq_journal',JSON.stringify(S.journal));renderJournal();}
-function renderJournal(){
-  const el=document.getElementById('journal-list');
-  if(!S.journal.length){el.innerHTML=`<div class="empty-state"><div style="font-size:2rem;margin-bottom:.5rem">📓</div>Your reflections will appear here.</div>`;return;}
-  el.innerHTML=S.journal.map((e,i)=>`<div class="journal-entry"><div class="je-header"><div class="je-date">${e.date}${e.ref?' · '+e.ref:''}</div><button class="je-delete" onclick="deleteJournalEntry(${i})">✕</button></div>${e.ar?`<div class="je-ar">${e.ar}</div>`:''}${e.note?`<div class="je-note">${e.note}</div>`:''}</div>`).join('');
+  // Settings
+  const rs=document.getElementById('reciter-sel'); if(rs) rs.value=S.reciter;
+  const ts=document.getElementById('trans-sel');   if(ts) ts.value=S.transPref;
+  const tj=document.getElementById('tajweed-toggle'); if(tj) tj.checked=S.tajweed;
+  if(rs) rs.onchange=()=>{ S.reciter=rs.value; localStorage.setItem('nq_reciter',S.reciter); };
+  if(ts) ts.onchange=()=>{ S.transPref=ts.value; localStorage.setItem('nq_trans',S.transPref); };
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
-function showModal(ar,ur,en){document.getElementById('modal-ar').textContent=ar;document.getElementById('modal-ur').textContent=ur;document.getElementById('modal-fact').textContent=en;document.getElementById('word-modal').classList.add('open');}
-function closeWordModal(){document.getElementById('word-modal').classList.remove('open');}
-
-// ─── SETTINGS ─────────────────────────────────────────────────────────────────
-function buildSettingsUI(){
-  const rd=document.getElementById('reciter-select');
-  if(rd){rd.innerHTML=Object.entries(RECITERS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');rd.value=S.reciter;rd.onchange=()=>{S.reciter=rd.value;localStorage.setItem('nq_reciter',rd.value);stopAudio();};}
-  const ud=document.getElementById('urdu-select');
-  if(ud){ud.innerHTML=Object.entries(URDU_EDITIONS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');ud.value=S.urduEdition;ud.onchange=()=>{S.urduEdition=ud.value;localStorage.setItem('nq_urdu',ud.value);if(S.currentSurahNum)openSurah(S.currentSurahNum);};}
-  const fh=document.getElementById('fajr-hour');if(fh){fh.value=localStorage.getItem('nq_fajr_hour')||'5';fh.onchange=()=>{localStorage.setItem('nq_fajr_hour',fh.value);scheduleFajrReminder();};}
-  const fm=document.getElementById('fajr-min');if(fm){fm.value=localStorage.getItem('nq_fajr_min')||'0';fm.onchange=()=>{localStorage.setItem('nq_fajr_min',fm.value);scheduleFajrReminder();};}
-  const tb=document.getElementById('tajweed-btn');if(tb){tb.textContent=S.tajweedOn?'🎨 Tajweed ON':'🎨 Tajweed OFF';tb.classList.toggle('active',S.tajweedOn);}
-  renderNotifBtn();
-  if(Notification.permission==='granted')scheduleFajrReminder();
+function toggleTajweed(on){ S.tajweed=on; localStorage.setItem('nq_tajweed',JSON.stringify(on)); }
+function enableNotif(){
+  const t=document.getElementById('fajr-time');
+  if(!t) return;
+  if(!('Notification' in window)){ showToast('Notifications not supported'); return; }
+  Notification.requestPermission().then(p=>{
+    if(p==='granted'){
+      const [h,m]=t.value.split(':');
+      localStorage.setItem('nq_fajr_hour',h);
+      localStorage.setItem('nq_fajr_min',m);
+      schedFajr(parseInt(h),parseInt(m));
+      showToast('✅ Fajr reminder set for '+t.value);
+    } else showToast('⚠️ Permission denied');
+  });
+}
+function schedFajr(h,m){
+  const now=new Date(), next=new Date();
+  next.setHours(h,m,0,0);
+  if(next<=now) next.setDate(next.getDate()+1);
+  clearTimeout(window._fajrT);
+  window._fajrT=setTimeout(()=>{
+    new Notification('NoorQuran 🌅',{body:'وقتِ فجر — Start your day with Quran',icon:REPO+'icons/icon-192.png'});
+    schedFajr(h,m);
+  },next-now);
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────────────
-function showToast(msg){
-  let t=document.getElementById('toast');
-  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
-  t.textContent=msg; t.className='toast show';
-  clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'),2500);
+// ══ JOURNAL ═══════════════════════════════════════════════════════════════════
+function addToJournal(ar, ref){
+  S.journal.unshift({ar,ref,date:new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})});
+  localStorage.setItem('nq_jrn',JSON.stringify(S.journal));
+  showToast('📓 Saved to journal');
+  addXP(10,'Journal');
 }
 
-// ─── PAGE NAV ─────────────────────────────────────────────────────────────────
-function showPage(id){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  const map={home:0,browse:1,read:2,memorize:3,vocab:4,journal:5,bookmarks:6,search:7,progress:8};
-  if(map[id]!==undefined) document.querySelectorAll('.nav-tab')[map[id]]?.classList.add('active');
-  if(id==='home')      renderHome();
-  if(id==='bookmarks') renderBookmarks();
-  if(id==='progress')  renderProgress();
-  if(id==='browse'&&!S.surahs.length) loadSurahList();
-}
-
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
+// ══ BOOT ══════════════════════════════════════════════════════════════════════
 async function init(){
   initStreak();
+  // Reset daily done if new day
+  const lastDay=localStorage.getItem('nq_done_day');
+  if(lastDay!==today()){
+    S.done={}; localStorage.setItem('nq_done','{}');
+    localStorage.setItem('nq_done_day',today());
+  } else {
+    S.done=JSON.parse(localStorage.getItem('nq_done')||'{}');
+  }
   renderHome();
-  renderVocab();
-  renderJournal();
-  buildSettingsUI();
-  await loadSurahList();
-  const page=new URLSearchParams(window.location.search).get('page');
-  if(page) showPage(page);
+  loadQ().then(()=>initReadPage());
+  renderGoals();
+  renderDuas();
+  renderMe();
+  // Restore fajr reminder
+  const fh=localStorage.getItem('nq_fajr_hour');
+  const fm=localStorage.getItem('nq_fajr_min');
+  if(fh&&fm&&Notification.permission==='granted') schedFajr(parseInt(fh),parseInt(fm));
 }
 init();
