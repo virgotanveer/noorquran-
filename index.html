@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>NoorQuran — قرآن سیکھیں</title>
+<meta name="description" content="Read, understand and memorize the Quran with Urdu translation">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d2818">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NoorQuran">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-512.png">
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Nastaliq+Urdu:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=7">
+</head>
+<body>
+
+<!-- ══ PAGES ═══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- HOME -->
+  <div id="page-home" class="page active">
+    <div class="home-scroll">
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-top">
+          <div class="hero-greeting" id="hero-greeting">السلام علیکم 🌅</div>
+          <div class="hero-date" id="hero-date"></div>
+        </div>
+        <div class="hero-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>
+        <div class="hero-stats">
+          <div class="hstat"><span class="hstat-num" id="hs-streak">0</span><span class="hstat-lbl">🔥 Streak</span></div>
+          <div class="hstat"><span class="hstat-num" id="hs-xp">0</span><span class="hstat-lbl">⚡ XP Today</span></div>
+          <div class="hstat"><span class="hstat-num" id="hs-ayaat">0</span><span class="hstat-lbl">📖 Ayaat</span></div>
+        </div>
+        <!-- XP bar -->
+        <div class="xp-bar-wrap">
+          <div class="xp-bar-fill" id="xp-bar"></div>
+        </div>
+        <div class="xp-label" id="xp-label">Level 1 — 0 / 500 XP</div>
+      </div>
+
+      <!-- Special occasion banner -->
+      <div id="occasion-banner" class="occasion-banner" style="display:none"></div>
+
+      <!-- Daily ayah -->
+      <div class="section-title">آج کی آیت</div>
+      <div class="ayah-hero-card" id="daily-ayah-card">
+        <div class="ahc-ref" id="dac-ref"></div>
+        <div class="ahc-arabic" id="dac-arabic"></div>
+        <div class="ahc-urdu" id="dac-urdu"></div>
+        <div class="ahc-actions">
+          <button class="gold-btn" id="dac-play">▶ Play</button>
+          <button class="outline-btn" onclick="addToJournal(dailyAyah.ar, dailyAyah.ref)">📓 Save</button>
+          <button class="outline-btn" onclick="openSurahReader(dailyAyah.s, dailyAyah.a-1)">Open →</button>
+        </div>
+      </div>
+
+      <!-- Today's challenge -->
+      <div class="section-title">آج کا چیلنج</div>
+      <div id="daily-challenge-card" class="challenge-hero-card" onclick="startChallenge('daily')">
+        <div class="chc-badge">DAILY</div>
+        <div class="chc-title" id="chc-title">5 Minute Quran</div>
+        <div class="chc-desc" id="chc-desc">Read for 5 minutes and earn 150 XP</div>
+        <div class="chc-meta">
+          <span class="chc-xp">+150 XP</span>
+          <span class="chc-arrow">Start →</span>
+        </div>
+        <div class="chc-prog-wrap"><div class="chc-prog-fill" id="chc-home-prog" style="width:0%"></div></div>
+      </div>
+
+      <!-- Quick challenges -->
+      <div class="section-title">Supplements</div>
+      <div class="supplement-grid">
+        <div class="supp-card" onclick="openSupplement('morning')">
+          <div class="supp-icon">🌅</div>
+          <div class="supp-name">Morning</div>
+          <div class="supp-sub">أذكار الصباح</div>
+          <div class="supp-xp">+80 XP</div>
+        </div>
+        <div class="supp-card" onclick="openSupplement('night')">
+          <div class="supp-icon">🌙</div>
+          <div class="supp-name">Night</div>
+          <div class="supp-sub">أذكار المساء</div>
+          <div class="supp-xp">+80 XP</div>
+        </div>
+        <div class="supp-card" onclick="openSupplement('jumma')">
+          <div class="supp-icon">🕌</div>
+          <div class="supp-name">Jumma</div>
+          <div class="supp-sub">Surah Al-Kahf</div>
+          <div class="supp-xp">+300 XP</div>
+        </div>
+        <div class="supp-card" onclick="openSupplement('night_surahs')">
+          <div class="supp-icon">🌠</div>
+          <div class="supp-name">Sleep</div>
+          <div class="supp-sub">Qul Surahs</div>
+          <div class="supp-xp">+100 XP</div>
+        </div>
+      </div>
+
+      <!-- Continue reading -->
+      <div class="section-title">Continue Reading</div>
+      <div class="continue-card" id="continue-card" onclick="continueReading()">
+        <div class="cc-icon">📖</div>
+        <div class="cc-body">
+          <div class="cc-title" id="cc-title">Start with Al-Fatiha</div>
+          <div class="cc-sub" id="cc-sub">Tap to begin your journey</div>
+        </div>
+        <div class="cc-arrow">›</div>
+      </div>
+
+      <!-- Monthly challenge -->
+      <div class="section-title">ماہانہ چیلنج</div>
+      <div class="monthly-card" onclick="showPage('goals')">
+        <div class="mc-left">
+          <div class="mc-title">Complete Juz Amma</div>
+          <div class="mc-sub">37 surahs · This month</div>
+          <div class="mc-prog-wrap"><div class="mc-prog-fill" id="mc-prog" style="width:0%"></div></div>
+          <div class="mc-pct" id="mc-pct">0% complete</div>
+        </div>
+        <div class="mc-right">+1000<br><span style="font-size:11px">XP</span></div>
+      </div>
+      <div style="height:90px"></div>
+    </div>
+  </div>
+
+  <!-- READ -->
+  <div id="page-read" class="page">
+    <div class="read-header">
+      <select class="surah-picker" id="surah-picker" onchange="loadAndRead(this.value)">
+        <option value="">Select Surah...</option>
+      </select>
+      <div class="read-mode-pills">
+        <button class="mode-pill active" data-mode="both" onclick="setReadMode('both',this)">Ur</button>
+        <button class="mode-pill" data-mode="en" onclick="setReadMode('en',this)">En</button>
+        <button class="mode-pill" data-mode="ar" onclick="setReadMode('ar',this)">Ar</button>
+        <button class="mode-pill" data-mode="wbw" onclick="setReadMode('wbw',this)">W×W</button>
+      </div>
+    </div>
+    <div class="ayah-scroll" id="ayah-scroll">
+      <div class="read-empty">
+        <div style="font-size:3rem">📖</div>
+        <div>Select a surah to begin</div>
+        <div style="font-size:12px;opacity:.5;margin-top:6px">or tap any challenge on Home</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GOALS -->
+  <div id="page-goals" class="page">
+    <div class="goals-scroll">
+      <div class="goals-header">
+        <div class="gh-title">Challenges</div>
+        <div class="gh-sub">Earn XP · Build habits · Grow closer to Allah</div>
+      </div>
+
+      <div class="challenge-section-label">⚡ Daily Challenges</div>
+      <div class="challenge-list" id="daily-challenges-list"></div>
+
+      <div class="challenge-section-label">🌅 Supplements</div>
+      <div class="challenge-list" id="supplement-list"></div>
+
+      <div class="challenge-section-label">🕌 Weekly Special</div>
+      <div class="challenge-list" id="weekly-list"></div>
+
+      <div class="challenge-section-label">📅 Monthly Challenges</div>
+      <div class="challenge-list" id="monthly-list"></div>
+
+      <div class="challenge-section-label">🌙 Islamic Occasions</div>
+      <div class="challenge-list" id="occasion-list"></div>
+      <div style="height:90px"></div>
+    </div>
+  </div>
+
+  <!-- DUAS -->
+  <div id="page-duas" class="page">
+    <div class="duas-scroll">
+      <div class="goals-header">
+        <div class="gh-title">Duas & Adhkar</div>
+        <div class="gh-sub">دعاء و أذكار</div>
+      </div>
+      <div class="dua-category-tabs" id="dua-tabs"></div>
+      <div id="dua-list"></div>
+      <div style="height:90px"></div>
+    </div>
+  </div>
+
+  <!-- ME -->
+  <div id="page-me" class="page">
+    <div class="me-scroll">
+      <div class="me-hero">
+        <div class="me-avatar" id="me-avatar">ق</div>
+        <div class="me-name" id="me-name">Tanveer</div>
+        <div class="me-level" id="me-level">Level 1 · Beginner</div>
+        <div class="me-xp-wrap">
+          <div class="me-xp-bar"><div class="me-xp-fill" id="me-xp-fill"></div></div>
+          <div class="me-xp-label" id="me-xp-text">0 / 500 XP</div>
+        </div>
+      </div>
+      <div class="me-stats-grid">
+        <div class="me-stat"><div class="ms-num" id="ms-streak">0</div><div class="ms-lbl">🔥 Day Streak</div></div>
+        <div class="me-stat"><div class="ms-num" id="ms-total-xp">0</div><div class="ms-lbl">⚡ Total XP</div></div>
+        <div class="me-stat"><div class="ms-num" id="ms-ayaat">0</div><div class="ms-lbl">📖 Ayaat Read</div></div>
+        <div class="me-stat"><div class="ms-num" id="ms-challenges">0</div><div class="ms-lbl">🎯 Challenges</div></div>
+      </div>
+      <div class="section-title" style="padding:1rem 1rem .5rem">Badges Earned</div>
+      <div class="badges-grid" id="badges-grid"></div>
+      <div class="section-title" style="padding:1rem 1rem .5rem">Settings</div>
+      <div class="settings-list">
+        <div class="setting-row">
+          <span>Reciter</span>
+          <select class="setting-select" id="reciter-sel">
+            <option value="Alafasy_128kbps">Sheikh Mishary Al-Afasy</option>
+            <option value="Abdurrahmaan_As-Sudais_192kbps">Sheikh Al-Sudais</option>
+            <option value="Husary_128kbps">Sheikh Al-Husary</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span>Translation</span>
+          <select class="setting-select" id="trans-sel">
+            <option value="ur">Urdu (Jalandhry)</option>
+            <option value="en">English (Sahih)</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span>Fajr Reminder</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="time" id="fajr-time" value="05:00" class="time-input">
+            <button class="small-btn" onclick="enableNotif()">Enable</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>Tajweed Colors</span>
+          <label class="toggle"><input type="checkbox" id="tajweed-toggle" onchange="toggleTajweed(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div style="height:90px"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="bn-btn active" onclick="showPage('home',this)">
+    <span class="bn-icon">🏠</span><span class="bn-lbl">Home</span>
+  </button>
+  <button class="bn-btn" onclick="showPage('read',this)">
+    <span class="bn-icon">📖</span><span class="bn-lbl">Read</span>
+  </button>
+  <button class="bn-btn" onclick="showPage('goals',this)">
+    <span class="bn-icon">🎯</span><span class="bn-lbl">Goals</span>
+  </button>
+  <button class="bn-btn" onclick="showPage('duas',this)">
+    <span class="bn-icon">🌙</span><span class="bn-lbl">Duas</span>
+  </button>
+  <button class="bn-btn" onclick="showPage('me',this)">
+    <span class="bn-icon">👤</span><span class="bn-lbl">Me</span>
+  </button>
+</nav>
+
+<!-- FULLSCREEN READER OVERLAY -->
+<div id="reader-overlay" class="reader-overlay">
+  <div class="reader-inner">
+    <div class="reader-topbar">
+      <button class="reader-back" onclick="closeReader()">✕</button>
+      <div class="reader-surah-label" id="rd-label"></div>
+      <div style="display:flex;gap:8px">
+        <button class="reader-icon-btn" id="rd-bookmark-btn" onclick="readerToggleBookmark()">🏷</button>
+        <button class="reader-icon-btn" onclick="readerShowContext()">📚</button>
+      </div>
+    </div>
+    <div class="reader-progress-bar"><div class="reader-prog-fill" id="rd-prog"></div></div>
+    <div class="reader-challenge-strip" id="rd-challenge-strip">
+      <span class="rcs-icon">⏱</span>
+      <div class="rcs-mid">
+        <span id="rcs-label">Daily Challenge</span>
+        <div class="rcs-track"><div class="rcs-fill" id="rcs-fill" style="width:0%"></div></div>
+      </div>
+      <span class="rcs-time" id="rcs-time">0:00</span>
+      <span class="rcs-pts" id="rcs-pts">+0</span>
+    </div>
+    <div class="reader-card-area" id="rd-card-area">
+      <div class="reader-card" id="rd-card">
+        <div class="rd-ayah-num" id="rd-num"></div>
+        <div class="rd-arabic" id="rd-arabic"></div>
+        <div class="rd-urdu" id="rd-urdu"></div>
+        <div class="rd-english" id="rd-english"></div>
+        <div class="rd-wbw" id="rd-wbw"></div>
+      </div>
+      <div class="swipe-hint" id="rd-swipe-hint">
+        <span>← Next</span><span>Prev →</span>
+      </div>
+    </div>
+    <div class="reader-bottombar">
+      <button class="rd-nav-btn" id="rd-prev" onclick="readerNav(-1)">‹</button>
+      <button class="rd-play-btn" id="rd-play" onclick="readerPlay()">▶</button>
+      <button class="rd-nav-btn" id="rd-next" onclick="readerNav(1)">›</button>
+    </div>
+  </div>
+  <!-- Context sheet -->
+  <div class="context-overlay" id="ctx-overlay" onclick="if(event.target===this)hideContext()">
+    <div class="context-sheet">
+      <div class="ctx-handle"></div>
+      <div class="ctx-body" id="ctx-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CHALLENGE TIMER OVERLAY -->
+<div id="challenge-overlay" class="challenge-overlay" style="display:none">
+  <div class="co-inner">
+    <button class="co-close" onclick="endChallenge()">✕</button>
+    <div class="co-title" id="co-title">Daily Challenge</div>
+    <div class="co-timer" id="co-timer">0:00</div>
+    <div class="co-prog-wrap"><div class="co-prog-fill" id="co-prog"></div></div>
+    <div class="co-pts" id="co-pts">+0 XP</div>
+    <div class="co-msg" id="co-msg">Reading time started…</div>
+    <button class="gold-btn co-done" onclick="completeChallengeManually()">I'm Done ✓</button>
+  </div>
+</div>
+
+<!-- SUPPLEMENT OVERLAY -->
+<div id="supp-overlay" class="challenge-overlay" style="display:none">
+  <div class="co-inner" style="max-height:90vh;overflow-y:auto">
+    <button class="co-close" onclick="closeSupp()">✕</button>
+    <div class="co-title" id="supp-title"></div>
+    <div id="supp-content"></div>
+    <button class="gold-btn co-done" onclick="completeSupplement()">Complete ✓</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- INSTALL BANNER -->
+<div id="install-banner" class="install-banner" style="display:none">
+  <div class="ib-icon">ق</div>
+  <div class="ib-text"><strong>Install NoorQuran</strong><br><small>Add to home screen</small></div>
+  <button class="gold-btn" onclick="installPWA()">Install</button>
+  <button class="ib-close" onclick="dismissInstall()">✕</button>
+</div>
+
+<script src="tajweed.js?v=7"></script>
+<script src="app.js?v=7"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/noorquran-/sw.js',{scope:'/noorquran-/'})
+      .then(r=>{ console.log('SW:',r.scope); r.update(); })
+      .catch(e=>console.warn('SW failed:',e));
+  });
+}
+let _deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault(); _deferredInstall=e;
+  if(!localStorage.getItem('nq_installed')) document.getElementById('install-banner').style.display='flex';
+});
+function installPWA(){ if(!_deferredInstall)return; _deferredInstall.prompt(); _deferredInstall.userChoice.then(()=>{document.getElementById('install-banner').style.display='none';localStorage.setItem('nq_installed','1');}); }
+function dismissInstall(){ document.getElementById('install-banner').style.display='none'; }
+window.addEventListener('appinstalled',()=>{ document.getElementById('install-banner').style.display='none'; localStorage.setItem('nq_installed','1'); });
+</script>
+</body>
+</html>
